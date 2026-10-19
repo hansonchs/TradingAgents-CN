@@ -15,7 +15,7 @@ def create_risk_manager(llm, memory):
         risk_debate_state = state["risk_debate_state"]
         market_research_report = state["market_report"]
         news_report = state["news_report"]
-        fundamentals_report = state["news_report"]
+        fundamentals_report = state["fundamentals_report"]
         sentiment_report = state["sentiment_report"]
         trader_plan = state["investment_plan"]
 
@@ -122,25 +122,17 @@ def create_risk_manager(llm, memory):
                 time.sleep(2)
         
         # 如果所有重试都失败，生成默认决策
+        analysis_available = bool(response_content)
         if not response_content:
             logger.error(f"❌ [Risk Manager] 所有LLM调用尝试失败，使用默认决策")
-            response_content = f"""**默认建议：持有**
+            response_content = f"""**分析不可用：需要人工覆核**
 
-由于技术原因无法生成详细分析，基于当前市场状况和风险控制原则，建议对{company_name}采取持有策略。
-
-**理由：**
-1. 市场信息不足，避免盲目操作
-2. 保持现有仓位，等待更明确的市场信号
-3. 控制风险，避免在不确定性高的情况下做出激进决策
-
-**建议：**
-- 密切关注市场动态和公司基本面变化
-- 设置合理的止损和止盈位
-- 等待更好的入场或出场时机
-
-注意：此为系统默认建议，建议结合人工分析做出最终决策。"""
+由于技术原因，未能完成对{company_name}的风险研究。
+这不是已验证的持有、买入或卖出建议，也不是券商风险审批。
+请检查数据与 provider 状态后重试；已有仓位按既定规则和券商实际状态处理。"""
 
         new_risk_debate_state = {
+            "analysis_status": "completed" if analysis_available else "unavailable",
             "judge_decision": response_content,
             "history": risk_debate_state["history"],
             "risky_history": risk_debate_state["risky_history"],

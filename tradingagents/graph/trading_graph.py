@@ -1354,6 +1354,7 @@ class TradingAgentsGraph:
             },
             "trader_investment_decision": final_state["trader_investment_plan"],
             "risk_debate_state": {
+                "analysis_status": final_state["risk_debate_state"].get("analysis_status", "unknown"),
                 "risky_history": final_state["risk_debate_state"]["risky_history"],
                 "safe_history": final_state["risk_debate_state"]["safe_history"],
                 "neutral_history": final_state["risk_debate_state"]["neutral_history"],

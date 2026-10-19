@@ -296,7 +296,8 @@ async def lifespan(app: FastAPI):
         async def run_sync_with_sources():
             await multi_source_service.run_full_sync(force=False, preferred_sources=preferred_sources)
 
-        asyncio.create_task(run_sync_with_sources())
+        if settings.SYNC_STOCK_BASICS_ENABLED:
+            asyncio.create_task(run_sync_with_sources())
 
         # 配置调度：优先使用 CRON，其次使用 HH:MM
         if settings.SYNC_STOCK_BASICS_ENABLED:

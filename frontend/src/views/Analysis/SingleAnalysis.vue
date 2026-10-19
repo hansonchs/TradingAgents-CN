@@ -547,14 +547,14 @@
                         </div>
                         <div class="metric-item">
                           <span class="label">模型置信度:</span>
-                          <span class="value">{{ (analysisResults.decision.confidence * 100).toFixed(1) }}%</span>
+                          <span class="value">{{ formatResearchPercent(analysisResults.decision.confidence) }}</span>
                           <el-tooltip content="基于AI模型计算的置信度，不代表实际投资成功率" placement="top">
                             <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
                           </el-tooltip>
                         </div>
                         <div class="metric-item">
                           <span class="label">风险评分:</span>
-                          <span class="value">{{ (analysisResults.decision.risk_score * 100).toFixed(1) }}%</span>
+                          <span class="value">{{ formatResearchPercent(analysisResults.decision.risk_score) }}</span>
                           <el-tooltip content="基于历史数据的风险评估，实际风险可能更高" placement="top">
                             <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
                           </el-tooltip>
@@ -717,6 +717,7 @@ import { marked } from 'marked'
 import { recommendModels, validateModels, type ModelRecommendationResponse } from '@/api/modelCapabilities'
 import { validateStockCode, getStockCodeFormatHelp, getStockCodeExamples } from '@/utils/stockValidator'
 import { normalizeMarketForAnalysis, getMarketByStockCode } from '@/utils/market'
+import { formatResearchPercent } from '@/utils/researchDecision'
 
 // 配置marked选项
 marked.setOptions({
