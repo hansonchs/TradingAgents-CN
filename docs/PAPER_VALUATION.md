@@ -27,8 +27,9 @@ accounts are read without migration writes. A valid CNY trade can normalize scal
 balances in its validated account update; unknown foreign balances remain null. Invalid historic financial amounts are not guessed or
 silently repaired; preserve and investigate the underlying private records.
 
-Both research one-click dialogs reject missing prices and unavailable currency
-cash before confirmation. The single-analysis page no longer falls back to a
+Both research one-click dialogs require an explicit completed research state and
+reject missing/conflicting status, missing prices and unavailable currency cash
+before confirmation. Task transport completion alone is insufficient. The single-analysis page no longer falls back to a
 fabricated price of 10. Legacy scalar CNY cash cannot fund a foreign-currency
 order. The backend still obtains its own market-order quote when filling; the
 editable dialog estimate is not a limit order or an execution guarantee.

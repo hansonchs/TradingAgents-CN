@@ -291,6 +291,7 @@ import { marked } from 'marked'
 import type { AnalysisReport } from '@/types/reports'
 import { getMarketByStockCode } from '@/utils/market'
 import { paperCashForMarket } from '@/utils/paperBalances'
+import { canSimulateResearch } from '@/utils/researchDecision'
 import type { PaperAccountSummary } from '@/api/paper'
 
 // 路由和认证
@@ -437,7 +438,7 @@ const getFileExtension = (format: string): string => {
 
 // 判断是否可以应用到本地模拟
 const canApplyToTrading = computed(() => {
-  if (!report.value || report.value.analysis_status !== 'completed') return false
+  if (!report.value || !canSimulateResearch(report.value)) return false
   const rec = report.value.recommendation || ''
   // 检查是否包含买入或卖出建议
   return rec.includes('买入') || rec.includes('卖出') || rec.toLowerCase().includes('buy') || rec.toLowerCase().includes('sell')
@@ -445,7 +446,7 @@ const canApplyToTrading = computed(() => {
 
 // 解析投资建议
 const parseRecommendation = () => {
-  if (!report.value || report.value.analysis_status !== 'completed') return null
+  if (!report.value || !canSimulateResearch(report.value)) return null
 
   const rec = report.value.recommendation || ''
   const traderPlan = report.value.reports?.trader_investment_plan || ''
@@ -484,7 +485,9 @@ const getCashByCurrency = (account: PaperAccountSummary, stockSymbol: string): n
 // 应用到模拟交易
 const applyToTrading = async () => {
   const currentReport = report.value
-  if (!currentReport) return
+  if (!currentReport || !canSimulateResearch(currentReport)) {
+    ElMessage.warning('研究未完成或状态未知，不能生成模拟交易'); return
+  }
   const recommendation = parseRecommendation()
   if (!recommendation) {
     ElMessage.warning('无法解析投资建议，请检查报告内容')

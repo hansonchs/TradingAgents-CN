@@ -719,7 +719,7 @@ import { recommendModels } from '@/api/modelCapabilities'
 import { validateStockCode, getStockCodeFormatHelp } from '@/utils/stockValidator'
 import { normalizeMarketForAnalysis, getMarketByStockCode } from '@/utils/market'
 import { paperCashForMarket } from '@/utils/paperBalances'
-import { formatResearchPercent } from '@/utils/researchDecision'
+import { formatResearchPercent, canSimulateResearch } from '@/utils/researchDecision'
 
 // 配置marked选项
 marked.setOptions({
@@ -1490,7 +1490,7 @@ const getFileExtension = (format: string): string => {
 
 // 解析投资建议
 const parseRecommendation = () => {
-  if (!analysisResults.value) return null
+  if (!canSimulateResearch(analysisResults.value)) return null
 
   // 从多个可能的字段中提取投资建议
   const rec = analysisResults.value.recommendation ||
@@ -1545,6 +1545,10 @@ const goSimOrder = async () => {
     if (!analysisResults.value) {
       ElMessage.warning('暂无可用的分析结果')
       return
+    }
+
+    if (!canSimulateResearch(analysisResults.value)) {
+      ElMessage.warning('研究未完成或状态未知，不能生成模拟交易'); return
     }
 
     // 获取股票代码（兼容新旧字段）

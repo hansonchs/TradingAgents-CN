@@ -35,7 +35,7 @@ assert.equal(await sandbox.Client.get('/enveloped'), envelope)
 console.log('ApiClient raw body and envelope transport checks passed (offline).')
 
 const formatter = fs.readFileSync(new URL('../src/utils/researchDecision.ts', import.meta.url), 'utf8')
-const formatterCode = ts.transpileModule(formatter.replace('export function', 'function') + '\nglobalThis.format = formatResearchPercent;', {
+const formatterCode = ts.transpileModule(formatter.replaceAll('export function', 'function') + '\nglobalThis.format = formatResearchPercent;', {
   compilerOptions: { target: ts.ScriptTarget.ES2020 }
 }).outputText
 const display = {}
@@ -136,6 +136,17 @@ for (const value of [null, undefined, NaN, Infinity, -1, false, '100']) {
   assert.equal(balances.cashForMarket({CNY: 0, HKD: 0, USD: value}, 'US'), undefined)
 }
 
+const researchTree = ts.createSourceFile('researchDecision.ts', formatter, ts.ScriptTarget.Latest, true)
+const gateFn = researchTree.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'canSimulateResearch')
+vm.runInNewContext(ts.transpileModule(gateFn.getText(researchTree).replace('export function', 'function') + '\nglobalThis.canSimulateResearch = canSimulateResearch;', {
+  compilerOptions: {target: ts.ScriptTarget.ES2020}
+}).outputText, display)
+for (const value of [null, {}, {status: 'completed'}, {analysis_status: 'unavailable'}, {decision: {analysis_status: 'unknown'}}, {analysis_status: 'completed', decision: {analysis_status: 'unavailable'}}]) {
+  assert.equal(display.canSimulateResearch(value), false)
+}
+assert.equal(display.canSimulateResearch({analysis_status: 'completed'}), true)
+assert.equal(display.canSimulateResearch({decision: {analysis_status: 'completed'}}), true)
+
 // Run both real one-click handlers up to the confirmation boundary with fake APIs.
 for (const [view, binding] of [['Analysis/SingleAnalysis', 'goSimOrder'], ['Reports/ReportDetail', 'applyToTrading']]) {
   const source = fs.readFileSync(new URL(`../src/views/${view}.vue`, import.meta.url), 'utf8')
@@ -144,12 +155,12 @@ for (const [view, binding] of [['Analysis/SingleAnalysis', 'goSimOrder'], ['Repo
   const declaration = tree.statements.filter(ts.isVariableStatement).flatMap(node => [...node.declarationList.declarations]).find(node => node.name.getText(tree) === binding)
   assert.ok(declaration)
   const handler = ts.transpileModule('const ' + declaration.getText(tree) + '; globalThis.run = ' + binding, {compilerOptions: {target: ts.ScriptTarget.ES2020}}).outputText
-  for (const scenario of ['quote-error', 'quote-missing', 'quote-infinite', 'unknown-cash', 'missing-position-quantity', 'valid']) {
+  for (const scenario of ['quote-error', 'quote-missing', 'quote-infinite', 'unknown-cash', 'missing-position-quantity', 'incomplete-research', 'unknown-research', 'conflicting-research', 'valid']) {
     const errors = []
     let forms = 0
     let orders = 0
     const cash = scenario === 'unknown-cash' ? {CNY: 1000, HKD: 1000, USD: null} : {CNY: 1000, HKD: 1000, USD: 1000}
-    const report = {stock_symbol: 'AAA', symbol: 'AAA', analysis_status: 'completed'}
+    const report = {stock_symbol: 'AAA', symbol: 'AAA', analysis_status: scenario === 'incomplete-research' ? 'unavailable' : scenario === 'unknown-research' ? undefined : 'completed', decision: scenario === 'conflicting-research' ? {analysis_status: 'unavailable'} : undefined}
     const context = {
       analysisResults: {value: report}, report: {value: report}, analysisForm: {},
       parseRecommendation: () => ({action: scenario === 'missing-position-quantity' ? 'sell' : 'buy'}),
@@ -158,7 +169,7 @@ for (const [view, binding] of [['Analysis/SingleAnalysis', 'goSimOrder'], ['Repo
         if (scenario === 'quote-error') throw Error('offline fake provider failure')
         return {success: true, data: {price: scenario === 'quote-missing' ? null : scenario === 'quote-infinite' ? Infinity : 5}}
       }},
-      getMarketByStockCode: () => '美股', paperCashForMarket: balances.cashForMarket,
+      getMarketByStockCode: () => '美股', paperCashForMarket: balances.cashForMarket, canSimulateResearch: display.canSimulateResearch,
       getCashByCurrency: account => balances.cashForMarket(account.cash, '美股'),
       ElMessage: {error: value => errors.push(value), warning: value => errors.push(value)},
       reactive: () => {forms++; throw Error('test confirmation boundary')}, console: {error() {}, warn() {}}
@@ -169,6 +180,7 @@ for (const [view, binding] of [['Analysis/SingleAnalysis', 'goSimOrder'], ['Repo
     assert.equal(orders, 0)
     if (scenario.startsWith('quote-')) assert.ok(errors.some(message => message.includes('实时价格不可用')))
     if (scenario === 'unknown-cash') assert.ok(errors.some(message => message.includes('余额不可用')))
+    if (scenario.includes('research')) assert.ok(errors.some(message => message.includes('研究未完成')))
   }
 }
 console.log('Both actual one-click handlers reject missing prices, unknown currency cash and unknown holdings before confirmation.')
