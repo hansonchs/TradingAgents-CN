@@ -12,6 +12,29 @@ from typing import Optional
 logger = logging.getLogger("app.config_bridge")
 
 
+def initialize_research_storage(config_manager):
+    """Never connect using display placeholders or log credential-bearing URIs."""
+    config_manager.mongodb_storage = None
+    if os.getenv("USE_MONGODB_STORAGE", "false").lower() != "true":
+        logger.info("Research MongoDB storage disabled")
+        return
+    connection = os.getenv("MONGODB_CONNECTION_STRING", "").strip()
+    if not connection.startswith(("mongodb://", "mongodb+srv://")):
+        logger.warning("Research MongoDB storage unavailable: valid connection string missing")
+        return
+    try:
+        from tradingagents.config.mongodb_storage import MongoDBStorage
+        storage = MongoDBStorage(connection_string=connection,
+                                 database_name=os.getenv("MONGODB_DATABASE_NAME", "tradingagents"))
+        if storage.is_connected():
+            config_manager.mongodb_storage = storage
+        else:
+            logger.warning("Research MongoDB storage unavailable")
+    except Exception as exc:
+        # Exception text can itself contain a credential-bearing URI.
+        logger.warning("Research MongoDB storage unavailable (%s)", type(exc).__name__)
+
+
 def bridge_config_to_env():
     """
     将统一配置桥接到环境变量
@@ -225,49 +248,9 @@ def bridge_config_to_env():
         # 5. 桥接系统运行时配置
         bridged_count += _bridge_system_settings()
 
-        # 6. 重新初始化 tradingagents 库的 MongoDB 存储
-        # 因为全局 config_manager 实例是在模块导入时创建的，那时环境变量还没有被桥接
-        try:
-            from tradingagents.config.config_manager import config_manager
-            from tradingagents.config.mongodb_storage import MongoDBStorage
-            logger.info("🔄 重新初始化 tradingagents MongoDB 存储...")
-
-            # 调试：检查环境变量
-            use_mongodb = os.getenv("USE_MONGODB_STORAGE", "false")
-            mongodb_conn = os.getenv("MONGODB_CONNECTION_STRING", "未设置")
-            mongodb_db = os.getenv("MONGODB_DATABASE_NAME", "tradingagents")
-            logger.info(f"  📋 USE_MONGODB_STORAGE: {use_mongodb}")
-            logger.info(f"  📋 MONGODB_CONNECTION_STRING: {mongodb_conn[:30]}..." if len(mongodb_conn) > 30 else f"  📋 MONGODB_CONNECTION_STRING: {mongodb_conn}")
-            logger.info(f"  📋 MONGODB_DATABASE_NAME: {mongodb_db}")
-
-            # 直接创建 MongoDBStorage 实例，而不是调用 _init_mongodb_storage()
-            # 这样可以捕获更详细的错误信息
-            if use_mongodb.lower() == "true":
-                try:
-                    # 🔍 详细日志：显示完整的连接字符串（用于调试）
-                    logger.info(f"  🔍 实际传入的连接字符串: {mongodb_conn}")
-                    logger.info(f"  🔍 实际传入的数据库名称: {mongodb_db}")
-
-                    config_manager.mongodb_storage = MongoDBStorage(
-                        connection_string=mongodb_conn,
-                        database_name=mongodb_db
-                    )
-                    if config_manager.mongodb_storage.is_connected():
-                        logger.info("✅ tradingagents MongoDB 存储已启用")
-                    else:
-                        logger.warning("⚠️ tradingagents MongoDB 连接失败，将使用 JSON 文件存储")
-                        config_manager.mongodb_storage = None
-                except Exception as e:
-                    logger.error(f"❌ 创建 MongoDBStorage 实例失败: {e}")
-                    import traceback
-                    logger.error(traceback.format_exc())
-                    config_manager.mongodb_storage = None
-            else:
-                logger.info("ℹ️ USE_MONGODB_STORAGE 未启用，将使用 JSON 文件存储")
-        except Exception as e:
-            logger.error(f"❌ 重新初始化 tradingagents MongoDB 存储失败: {e}")
-            import traceback
-            logger.error(traceback.format_exc())
+        # Reinitialize after environment bridging, without logging connection secrets.
+        from tradingagents.config.config_manager import config_manager
+        initialize_research_storage(config_manager)
 
         # 7. 同步定价配置到 tradingagents 的 config/pricing.json
         # 注意：这里需要从数据库读取配置，因为文件中的配置没有定价信息
