@@ -23,7 +23,7 @@
           <span class="update-time">更新于 {{ article.updateTime }}</span>
         </div>
 
-        <div class="article-content" v-html="article.content"></div>
+        <div class="article-content" v-html="sanitizeHtml(article.content)"></div>
 
         <div class="article-footer">
           <el-divider />
@@ -56,6 +56,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeHtml } from '@/utils/safeHtml'
 import { ref, computed, onMounted, watch, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Download, Clock, View, ArrowLeft, ArrowRight } from '@element-plus/icons-vue'

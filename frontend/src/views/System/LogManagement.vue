@@ -194,6 +194,7 @@
 </template>
 
 <script setup lang="ts">
+import type { StatusTagType } from '@/types/ui'
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Download, Search, View, Delete } from '@element-plus/icons-vue'
@@ -354,12 +355,12 @@ const exportLogs = async () => {
 }
 
 const getLogTypeColor = (type: string) => {
-  const colors: Record<string, string> = {
+  const colors: Record<string, StatusTagType> = {
     error: 'danger',
     webapi: 'primary',
     worker: 'success',
     access: 'info',
-    other: ''
+    other: 'info'
   }
   return colors[type] || ''
 }

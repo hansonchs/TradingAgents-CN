@@ -3,7 +3,7 @@
     <template v-if="sections && sections.length > 0">
       <el-tabs v-model="active">
         <el-tab-pane v-for="(sec, idx) in sections" :key="sec.key || idx" :label="sec.title" :name="String(idx)">
-          <div v-if="typeof sec.content === 'string'" class="markdown-content" v-html="renderMarkdown(sec.content)"></div>
+          <div v-if="typeof sec.content === 'string'" class="markdown-content" v-html="sanitizeHtml(renderMarkdown(sec.content))"></div>
           <div v-else class="json-content"><pre>{{ JSON.stringify(sec.content, null, 2) }}</pre></div>
         </el-tab-pane>
       </el-tabs>
@@ -17,6 +17,7 @@
   </el-dialog>
 </template>
 <script setup lang="ts">
+import { sanitizeHtml } from '@/utils/safeHtml'
 import { computed, ref } from 'vue'
 import { marked } from 'marked'
 const props = defineProps<{ modelValue: boolean; sections: Array<{ key?: string; title: string; content: any }> }>()

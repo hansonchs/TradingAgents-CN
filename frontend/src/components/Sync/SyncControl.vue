@@ -181,6 +181,7 @@
 </template>
 
 <script setup lang="ts">
+import type { StatusTagType } from '@/types/ui'
 import { ref, reactive, onMounted, onUnmounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, RefreshRight, Delete } from '@element-plus/icons-vue'
@@ -445,7 +446,7 @@ const showSyncCompletionNotification = (status: string) => {
 
 // 获取状态类型
 const getStatusType = (status?: string) => {
-  const typeMap: Record<string, string> = {
+  const typeMap: Record<string, StatusTagType> = {
     idle: 'info',
     running: 'warning',
     success: 'success',

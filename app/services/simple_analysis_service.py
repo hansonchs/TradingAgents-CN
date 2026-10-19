@@ -1787,6 +1787,7 @@ class SimpleAnalysisService:
             # 构建结果
             result = {
                 "analysis_id": str(uuid.uuid4()),
+                "user_id": str(user_id),
                 "stock_code": request.stock_code,
                 "stock_symbol": request.stock_code,  # 添加stock_symbol字段以保持兼容性
                 "analysis_date": analysis_date,
@@ -2587,6 +2588,7 @@ class SimpleAnalysisService:
 
             # 构建文档（与web目录的MongoDBReportManager保持一致）
             document = {
+                "user_id": result.get("user_id"),
                 "analysis_id": analysis_id,
                 "stock_symbol": stock_symbol,
                 "stock_name": stock_name,  # 🔥 添加股票名称字段

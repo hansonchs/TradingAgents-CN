@@ -46,3 +46,40 @@ for (const value of [null, undefined, NaN, Infinity, '0', false, -1, 2]) {
 assert.equal(display.format(0), '0.0%')
 assert.equal(display.format(0.3), '30.0%')
 console.log('Unknown research risk remains unknown in display checks.')
+
+// Exercise the actual CSV/database exporters: blob options must be transport config.
+const exportsSeen = []
+const fakeApi = {
+  rawGet: (...args) => { exportsSeen.push(['get', ...args]); return Promise.resolve('csv') },
+  rawPost: (...args) => { exportsSeen.push(['post', ...args]); return Promise.resolve('database') }
+}
+function loadBinding(rel, name) {
+  const src = fs.readFileSync(new URL(rel, import.meta.url), 'utf8')
+  const sf = ts.createSourceFile(rel, src, ts.ScriptTarget.Latest, true)
+  const binding = sf.statements.find(n => (ts.isClassDeclaration(n) && n.name.text === name) || (ts.isVariableStatement(n) && n.declarationList.declarations.some(d => d.name.getText(sf) === name)))
+  const code = ts.transpileModule(binding.getText(sf).replace(/^export /, '') + `\nglobalThis.binding = ${name};`, {compilerOptions: {target: ts.ScriptTarget.ES2020}}).outputText
+  const context = {ApiClient: fakeApi, URLSearchParams}
+  vm.runInNewContext(code, context)
+  return context.binding
+}
+const logs = loadBinding('../src/api/operationLogs.ts', 'OperationLogsApi')
+assert.equal(await logs.exportOperationLogsCSV({action_type: 'analysis'}), 'csv')
+assert.equal(exportsSeen.at(-1)[1], '/api/system/logs/export/csv?action_type=analysis')
+assert.equal(exportsSeen.at(-1)[2], undefined)
+assert.equal(exportsSeen.at(-1)[3].responseType, 'blob')
+const database = loadBinding('../src/api/database.ts', 'databaseApi')
+assert.equal(await database.exportData({sanitize: true}), 'database')
+assert.equal(exportsSeen.at(-1)[2].sanitize, true)
+assert.equal(exportsSeen.at(-1)[3].responseType, 'blob')
+
+const balancesSource = fs.readFileSync(new URL('../src/utils/paperBalances.ts', import.meta.url), 'utf8')
+const balancesTree = ts.createSourceFile('paperBalances.ts', balancesSource, ts.ScriptTarget.Latest, true)
+const balancesFn = balancesTree.statements.find(n => ts.isFunctionDeclaration(n) && n.name.text === 'currencyValue')
+const balancesCode = ts.transpileModule(balancesFn.getText(balancesTree).replace('export function', 'function') + '\nglobalThis.balance = currencyValue;', {compilerOptions: {target: ts.ScriptTarget.ES2020}}).outputText
+const balances = {}
+vm.runInNewContext(balancesCode, balances)
+assert.equal(balances.balance(100, 'CNY'), 100)
+assert.equal(balances.balance(100, 'HKD'), undefined)
+assert.equal(balances.balance({CNY: 0, HKD: 50, USD: 1}, 'CNY'), 0)
+assert.equal(balances.balance({CNY: 0, HKD: 50, USD: 1}, 'HKD'), 50)
+console.log('Real exporter options and legacy/multi-currency balance contracts passed.')

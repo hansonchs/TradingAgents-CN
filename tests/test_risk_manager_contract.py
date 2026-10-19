@@ -119,3 +119,11 @@ def test_unavailable_report_export_preserves_unknown_risk(tmp_path, monkeypatch)
     import json
     metadata = json.loads(next(tmp_path.rglob('analysis_metadata.json')).read_text())
     assert metadata['risk_analysis_status'] == 'unavailable'
+
+
+def test_saved_report_availability_does_not_promote_historical_unknowns():
+    from tradingagents.utils.research_decision import research_status
+    assert research_status({'decision': {'analysis_status': 'unavailable'}}) == 'unavailable'
+    assert research_status({'state': {'risk_debate_state': {'analysis_status': 'completed'}}}) == 'completed'
+    assert research_status({'status': 'completed', 'recommendation': 'hold'}) == 'unknown'
+    assert research_status({'decision': None}) == 'unknown'

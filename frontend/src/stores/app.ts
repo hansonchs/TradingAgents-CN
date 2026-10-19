@@ -52,7 +52,7 @@ export const useAppStore = defineStore('app', {
 
     currentRoute: null,
 
-    preferences: useStorage('user-preferences', {
+    preferences: useStorage<AppState['preferences']>('user-preferences', {
       defaultMarket: 'A股',
       defaultDepth: '3',  // 3级为标准分析（推荐）
       autoRefresh: true,
@@ -185,7 +185,7 @@ export const useAppStore = defineStore('app', {
     resetPreferences() {
       this.preferences = {
         defaultMarket: 'A股',
-        defaultDepth: '标准',
+        defaultDepth: '3',
         autoRefresh: true,
         refreshInterval: 30,
         showWelcome: true
@@ -220,7 +220,7 @@ export const useAppStore = defineStore('app', {
         this.setApiConnected(connected)
         return connected
       } catch (error) {
-        if (error.name === 'AbortError') {
+        if (error instanceof Error && error.name === 'AbortError') {
           console.warn('API连接检查超时')
         } else {
           console.warn('API连接检查失败:', error)
@@ -251,7 +251,7 @@ export const useAppStore = defineStore('app', {
           this.setApiConnected(false)
         }
       } catch (error) {
-        if (error.name === 'AbortError') {
+        if (error instanceof Error && error.name === 'AbortError') {
           console.warn('获取API版本超时')
         } else {
           console.warn('获取API版本失败:', error)

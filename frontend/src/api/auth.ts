@@ -1,13 +1,6 @@
+import type { UserInfoUpdate } from '@/types/auth'
 import { ApiClient } from './request'
-import type { 
-  LoginForm, 
-  RegisterForm, 
-  LoginResponse, 
-  RefreshTokenResponse,
-  User,
-  UserPermissions,
-  ChangePasswordForm
-} from '@/types/auth'
+import type { LoginForm, RegisterForm, LoginResponse, RefreshTokenResponse, User, ChangePasswordForm } from '@/types/auth'
 
 export const authApi = {
   // 登录
@@ -41,7 +34,7 @@ export const authApi = {
   //   ApiClient.get<UserPermissions>('/api/auth/permissions'),
 
   // 更新用户信息
-  updateUserInfo: (data: Partial<User>) =>
+  updateUserInfo: (data: UserInfoUpdate) =>
     ApiClient.put<User>('/api/auth/me', data),
 
   // 修改密码

@@ -71,6 +71,7 @@ export interface NewsItem {
 }
 
 export interface NewsResponse {
+  status?: 'ready' | 'empty' | 'unavailable' | 'unsupported'
   symbol: string  // 主字段：6位股票代码
   code?: string   // 兼容字段（已废弃）
   days: number

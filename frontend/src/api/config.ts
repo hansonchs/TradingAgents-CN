@@ -142,6 +142,7 @@ export interface ConfigTestRequest {
 }
 
 export interface ConfigTestResponse {
+  response_time?: number
   success: boolean
   message: string
   details?: Record<string, any>

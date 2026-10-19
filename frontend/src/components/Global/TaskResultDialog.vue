@@ -2,9 +2,9 @@
   <el-dialog v-model="visible" title="任务结果" width="60%">
     <div v-if="result">
       <h4>建议</h4>
-      <div class="markdown-content" v-html="renderMarkdown(result.recommendation || '无')"></div>
+      <div class="markdown-content" v-html="sanitizeHtml(renderMarkdown(result.recommendation || '无'))"></div>
       <h4 style="margin-top: 16px;">摘要</h4>
-      <div class="markdown-content" v-html="renderMarkdown(result.summary || '无')"></div>
+      <div class="markdown-content" v-html="sanitizeHtml(renderMarkdown(result.summary || '无'))"></div>
     </div>
     <template #footer>
       <el-button @click="emit('close')">关闭</el-button>
@@ -14,6 +14,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeHtml } from '@/utils/safeHtml'
 import { computed } from 'vue'
 import { marked } from 'marked'
 

@@ -587,7 +587,8 @@ const handleMenuSelect = (index: string) => {
   activeTab.value = index
 }
 
-const handleThemeChange = (theme: string) => {
+const handleThemeChange = (theme: string | number | boolean | undefined) => {
+  if (theme !== 'light' && theme !== 'dark' && theme !== 'auto') return
   appStore.setTheme(theme as any)
 }
 
@@ -719,7 +720,7 @@ const changePasswordForm = ref({
   confirmPassword: ''
 })
 
-const validateConfirmPassword = (rule: any, value: any, callback: any) => {
+const validateConfirmPassword = (_rule: any, value: any, callback: any) => {
   if (value === '') {
     callback(new Error('请再次输入新密码'))
   } else if (value !== changePasswordForm.value.newPassword) {

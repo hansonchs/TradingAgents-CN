@@ -1,5 +1,6 @@
 <template>
   <div class="token-statistics">
+    <el-alert title="示例数据：此页尚未连接实际用量记录，以下金额与统计不代表真实费用。" type="info" :closable="false" />
     <!-- 页面标题 -->
     <div class="page-header">
       <h1 class="page-title">
@@ -295,9 +296,14 @@ const overview = reactive({
   avgCostChange: 0
 })
 
-const records = ref([])
-const filteredRecords = ref([])
-const modelRanking = ref([])
+interface TokenRecord {
+  timestamp: string; provider: string; model: string; stock_symbol: string
+  prompt_tokens: number; completion_tokens: number; total_tokens: number; cost: number; duration: number
+}
+interface ModelUsage { name: string; requests: number; tokens: number; cost: number }
+const records = ref<TokenRecord[]>([])
+const filteredRecords = ref<TokenRecord[]>([])
+const modelRanking = ref<ModelUsage[]>([])
 
 // 方法
 const formatNumber = (num: number): string => {
@@ -326,7 +332,7 @@ const formatDateTime = (timestamp: string): string => {
 }
 
 const getProviderName = (provider: string): string => {
-  const names = {
+  const names: Record<string, string> = {
     'dashscope': '阿里百炼',
     'openai': 'OpenAI',
     'google': 'Google',
@@ -447,7 +453,7 @@ const exportData = () => {
   ElMessage.info('导出功能开发中...')
 }
 
-const viewDetails = (row: any) => {
+const viewDetails = (_row: any) => {
   ElMessage.info('详情功能开发中...')
 }
 

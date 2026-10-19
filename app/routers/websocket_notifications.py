@@ -6,10 +6,10 @@ import asyncio
 import json
 import logging
 from typing import Dict, Set
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Query, HTTPException, Depends
 from datetime import datetime
 
-from app.services.auth_service import AuthService
+from app.routers.auth_db import get_current_user
 
 router = APIRouter()
 logger = logging.getLogger("webapi.websocket")
@@ -106,6 +106,14 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def _authenticate_socket(websocket, token):
+    try:
+        return await get_current_user(authorization=f"Bearer {token}")
+    except HTTPException:
+        await websocket.close(code=1008, reason="Unauthorized")
+        return None
+
+
 @router.websocket("/ws/notifications")
 async def websocket_notifications_endpoint(
     websocket: WebSocket,
@@ -131,14 +139,11 @@ async def websocket_notifications_endpoint(
         }
     }
     """
-    # 验证 token
-    token_data = AuthService.verify_token(token)
-    if not token_data:
-        await websocket.close(code=1008, reason="Unauthorized")
+    user = await _authenticate_socket(websocket, token)
+    if not user:
         return
-    
-    user_id = "admin"  # 从 token_data 中获取
-    
+    user_id = user["id"]
+
     # 连接 WebSocket
     await manager.connect(websocket, user_id)
     
@@ -221,15 +226,18 @@ async def websocket_task_progress_endpoint(
         }
     }
     """
-    # 验证 token
-    token_data = AuthService.verify_token(token)
-    if not token_data:
-        await websocket.close(code=1008, reason="Unauthorized")
+    user = await _authenticate_socket(websocket, token)
+    if not user:
         return
-    
-    user_id = "admin"
-    channel = f"task_progress:{task_id}"
-    
+    from app.routers.analysis import _require_task_access
+    from app.services.simple_analysis_service import get_simple_analysis_service
+    try:
+        await _require_task_access(task_id, user, get_simple_analysis_service())
+    except HTTPException:
+        await websocket.close(code=1008, reason="Task not found")
+        return
+    user_id = user["id"]
+
     # 连接 WebSocket
     await websocket.accept()
     logger.info(f"✅ [WS-Task] 新连接: task={task_id}, user={user_id}")
@@ -263,8 +271,10 @@ async def websocket_task_progress_endpoint(
 
 
 @router.get("/ws/stats")
-async def get_websocket_stats():
+async def get_websocket_stats(user: dict = Depends(get_current_user)):
     """获取 WebSocket 连接统计"""
+    if user.get("is_admin") is not True:
+        raise HTTPException(status_code=403, detail="Admin required")
     return manager.get_stats()
 
 
@@ -292,13 +302,14 @@ async def send_task_progress_via_websocket(task_id: str, progress_data: dict):
         task_id: 任务 ID
         progress_data: 进度数据
     """
-    # 注意：这里需要知道任务属于哪个用户
-    # 可以从数据库查询或在 progress_data 中传递
-    # 暂时简化处理
-    message = {
-        "type": "progress",
-        "data": progress_data
-    }
-    # 广播给所有连接（生产环境应该只发给任务所属用户）
-    await manager.broadcast(message)
-
+    from app.core.database import get_mongo_db
+    db = get_mongo_db()
+    task = await db.analysis_tasks.find_one({"task_id": task_id})
+    if not task:
+        task = await db.analysis_reports.find_one({"task_id": task_id})
+    if not task or not task.get("user_id"):
+        logger.warning("Task progress omitted: no explicit owner for %s", task_id)
+        return
+    await manager.send_personal_message(
+        {"type": "progress", "data": progress_data}, str(task["user_id"])
+    )
