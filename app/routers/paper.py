@@ -3,6 +3,7 @@ from pydantic import BaseModel, Field
 from typing import Literal, Optional, Dict, Any, List, Tuple
 from datetime import datetime
 import logging
+import math
 import re
 
 from app.routers.auth_db import get_current_user
@@ -21,10 +22,13 @@ INITIAL_CASH_BY_MARKET = {
 }
 
 
+MAX_QUANTITY = 2**63 - 1
+
+
 class PlaceOrderRequest(BaseModel):
     code: str = Field(..., description="股票代码（支持A股/港股/美股）")
     side: Literal["buy", "sell"]
-    quantity: int = Field(..., gt=0)
+    quantity: int = Field(..., gt=0, le=MAX_QUANTITY)
     market: Optional[str] = Field(None, description="市场类型 (CN/HK/US)，不传则自动识别")
     # 可选：关联的分析ID，便于从分析页面一键下单后追踪
     analysis_id: Optional[str] = None
@@ -91,27 +95,6 @@ async def _get_or_create_account(user_id: str) -> Dict[str, Any]:
             "updated_at": now,
         }
         await db["paper_accounts"].insert_one(acc)
-    else:
-        # 兼容旧账户结构：如果 cash 或 realized_pnl 仍为标量，迁移为多货币对象
-        updates: Dict[str, Any] = {}
-        try:
-            cash_val = acc.get("cash")
-            if not isinstance(cash_val, dict):
-                base_cash = float(cash_val or 0.0)
-                updates["cash"] = {"CNY": base_cash, "HKD": 0.0, "USD": 0.0}
-
-            pnl_val = acc.get("realized_pnl")
-            if not isinstance(pnl_val, dict):
-                base_pnl = float(pnl_val or 0.0)
-                updates["realized_pnl"] = {"CNY": base_pnl, "HKD": 0.0, "USD": 0.0}
-
-            if updates:
-                updates["updated_at"] = datetime.utcnow().isoformat()
-                await db["paper_accounts"].update_one({"user_id": user_id}, {"$set": updates})
-                # 重新读取迁移后的账户
-                acc = await db["paper_accounts"].find_one({"user_id": user_id})
-        except Exception as e:
-            logger.error(f"❌ 账户结构迁移失败 user_id={user_id}: {e}")
     return acc
 
 
@@ -130,6 +113,16 @@ def _calculate_commission(market: str, side: str, amount: float, rules: Dict[str
         return 0.0
 
     commission_config = rules["commission"]
+    if not isinstance(commission_config, dict):
+        raise ValueError("invalid commission configuration")
+    fields = {"rate", "min", "stamp_duty_rate", "transaction_levy_rate",
+              "trading_fee_rate", "settlement_fee_rate", "sec_fee_rate"}
+    commission_config = dict(commission_config)
+    for field in fields.intersection(commission_config):
+        value = _finite_number(commission_config[field])
+        if value is None or value < 0:
+            raise ValueError("invalid commission configuration")
+        commission_config[field] = value
     commission = 0.0
 
     # 佣金
@@ -191,6 +184,43 @@ async def _get_available_quantity(user_id: str, code: str, market: str) -> int:
     return total_qty
 
 
+def _finite_number(value: Any) -> Optional[float]:
+    """Normalize numbers without admitting booleans, NaN or infinities."""
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _positive_price(value: Any) -> Optional[float]:
+    number = _finite_number(value)
+    return number if number is not None and number > 0 else None
+
+
+def _finite_amount(value: Any) -> Optional[float]:
+    number = _finite_number(value)
+    return round(number, 2) if number is not None else None
+
+
+def _valid_quantity(value: Any) -> Optional[int]:
+    return value if isinstance(value, int) and not isinstance(value, bool) and 0 <= value <= MAX_QUANTITY else None
+
+
+def _position_value(last: Any, qty: Optional[int], avg_cost: Optional[float]) -> Dict[str, Any]:
+    price = _positive_price(last)
+    market_value = 0.0 if qty == 0 else (_finite_amount(price * qty) if price is not None and qty is not None else None)
+    pnl = 0.0 if qty == 0 else (_finite_amount((price - avg_cost) * qty) if price is not None and avg_cost is not None and qty is not None else None)
+    return {
+        "last_price": price,
+        "market_value": market_value,
+        "unrealized_pnl": pnl,
+        "valuation_status": "available" if market_value is not None and pnl is not None else "unavailable",
+    }
+
+
 async def _get_last_price(code: str, market: str) -> Optional[float]:
     """
     获取股票最新价格（支持多市场）
@@ -211,28 +241,18 @@ async def _get_last_price(code: str, market: str) -> Optional[float]:
             {"$or": [{"code": code}, {"symbol": code}]},
             {"_id": 0, "close": 1}
         )
-        if q and q.get("close") is not None:
-            try:
-                price = float(q["close"])
-                if price > 0:
-                    logger.debug(f"✅ 从 market_quotes 获取价格: {code} = {price}")
-                    return price
-            except Exception as e:
-                logger.warning(f"⚠️ market_quotes 价格转换失败 {code}: {e}")
+        price = _positive_price(q.get("close")) if q else None
+        if price is not None:
+            return price
 
         # 2. 回退到 stock_basic_info 的 current_price
         basic_info = await db["stock_basic_info"].find_one(
             {"$or": [{"code": code}, {"symbol": code}]},
             {"_id": 0, "current_price": 1}
         )
-        if basic_info and basic_info.get("current_price") is not None:
-            try:
-                price = float(basic_info["current_price"])
-                if price > 0:
-                    logger.debug(f"✅ 从 stock_basic_info 获取价格: {code} = {price}")
-                    return price
-            except Exception as e:
-                logger.warning(f"⚠️ stock_basic_info 价格转换失败 {code}: {e}")
+        price = _positive_price(basic_info.get("current_price")) if basic_info else None
+        if price is not None:
+            return price
 
         logger.error(f"❌ 无法从数据库获取A股价格: {code}")
         return None
@@ -247,11 +267,10 @@ async def _get_last_price(code: str, market: str) -> Optional[float]:
             quote = await service.get_quote(market, code, force_refresh=False)
 
             if quote:
-                # 尝试多个可能的价格字段
-                price = quote.get("price") or quote.get("current_price") or quote.get("close")
-                if price and float(price) > 0:
-                    logger.debug(f"✅ 从 ForeignStockService 获取{market}价格: {code} = {price}")
-                    return float(price)
+                for field in ("price", "current_price", "close"):
+                    price = _positive_price(quote.get(field))
+                    if price is not None:
+                        return price
         except Exception as e:
             logger.error(f"❌ 获取{market}股价格失败 {code}: {e}")
             return None
@@ -283,18 +302,28 @@ async def get_account(current_user: dict = Depends(get_current_user)):
     }
 
     detailed_positions: List[Dict[str, Any]] = []
+    incomplete_currencies = set()
     for p in positions:
         code = p.get("code")
         market = p.get("market", "CN")
         currency = p.get("currency", "CNY")
-        qty = int(p.get("quantity", 0))
-        avg_cost = float(p.get("avg_cost", 0.0))
-        available_qty = p.get("available_qty", qty)
+        qty = _valid_quantity(p.get("quantity"))
+        avg_cost = _finite_number(p.get("avg_cost"))
+        if avg_cost is not None and avg_cost < 0:
+            avg_cost = None
+        available_qty = _valid_quantity(p.get("available_qty", qty))
 
         # 获取最新价
         last = await _get_last_price(code, market)
-        mkt_value = round((last or 0.0) * qty, 2)
-        positions_value_by_currency[currency] += mkt_value
+        valuation = _position_value(last, qty, avg_cost)
+        mkt_value = valuation["market_value"]
+        if valuation["valuation_status"] == "unavailable":
+            incomplete_currencies.add(currency)
+        current_value = positions_value_by_currency[currency]
+        positions_value_by_currency[currency] = (
+            _finite_amount(current_value + mkt_value)
+            if current_value is not None and mkt_value is not None else None
+        )
 
         detailed_positions.append({
             "code": code,
@@ -303,9 +332,7 @@ async def get_account(current_user: dict = Depends(get_current_user)):
             "quantity": qty,
             "available_qty": available_qty,
             "avg_cost": avg_cost,
-            "last_price": last,
-            "market_value": mkt_value,
-            "unrealized_pnl": None if last is None else round((last - avg_cost) * qty, 2)
+            **valuation
         })
 
     # 计算总资产（按货币分别显示）
@@ -314,26 +341,26 @@ async def get_account(current_user: dict = Depends(get_current_user)):
 
     # 兼容旧格式（单一现金）
     if not isinstance(cash, dict):
-        cash = {"CNY": float(cash), "HKD": 0.0, "USD": 0.0}
+        cash = {"CNY": _finite_number(cash), "HKD": None, "USD": None}
     if not isinstance(realized_pnl, dict):
-        realized_pnl = {"CNY": float(realized_pnl), "HKD": 0.0, "USD": 0.0}
+        realized_pnl = {"CNY": _finite_number(realized_pnl), "HKD": None, "USD": None}
 
+    cash_values = {currency: _finite_amount(cash.get(currency)) for currency in INITIAL_CASH_BY_MARKET}
+    pnl_values = {currency: _finite_amount(realized_pnl.get(currency)) for currency in INITIAL_CASH_BY_MARKET}
+    equity = {
+        currency: _finite_amount(cash_values[currency] + value)
+        if cash_values[currency] is not None and value is not None else None
+        for currency, value in positions_value_by_currency.items()
+    }
     summary = {
-        "cash": {
-            "CNY": round(float(cash.get("CNY", 0.0)), 2),
-            "HKD": round(float(cash.get("HKD", 0.0)), 2),
-            "USD": round(float(cash.get("USD", 0.0)), 2)
-        },
-        "realized_pnl": {
-            "CNY": round(float(realized_pnl.get("CNY", 0.0)), 2),
-            "HKD": round(float(realized_pnl.get("HKD", 0.0)), 2),
-            "USD": round(float(realized_pnl.get("USD", 0.0)), 2)
-        },
+        "cash": cash_values,
+        "realized_pnl": pnl_values,
         "positions_value": positions_value_by_currency,
-        "equity": {
-            "CNY": round(float(cash.get("CNY", 0.0)) + positions_value_by_currency["CNY"], 2),
-            "HKD": round(float(cash.get("HKD", 0.0)) + positions_value_by_currency["HKD"], 2),
-            "USD": round(float(cash.get("USD", 0.0)) + positions_value_by_currency["USD"], 2)
+        "equity": equity,
+        "valuation_status": {
+            currency: "available" if equity[currency] is not None
+            and pnl_values[currency] is not None and currency not in incomplete_currencies else "unavailable"
+            for currency in INITIAL_CASH_BY_MARKET
         },
         "updated_at": acc.get("updated_at"),
     }
@@ -365,24 +392,33 @@ async def place_order(payload: PlaceOrderRequest, current_user: dict = Depends(g
     }
     currency = currency_map.get(market, "CNY")
 
-    # 3. 获取账户
-    acc = await _get_or_create_account(current_user["id"])
-
-    # 4. 获取价格
-    price = await _get_last_price(normalized_code, market)
-    if price is None or price <= 0:
+    # Validate quote and amounts before creating or mutating an account.
+    price = _positive_price(await _get_last_price(normalized_code, market))
+    if price is None:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"无法获取股票 {normalized_code} ({market}) 的最新价格"
         )
 
     # 5. 计算金额
-    notional = round(price * qty, 2)
+    try:
+        notional = _finite_amount(price * qty)
+    except OverflowError:
+        notional = None
+    if notional is None or notional <= 0:
+        raise HTTPException(status_code=400, detail="无效的模拟成交金额")
 
     # 6. 获取市场规则并计算手续费
     rules = await _get_market_rules(market)
-    commission = _calculate_commission(market, side, notional, rules) if rules else 0.0
+    try:
+        commission = _calculate_commission(market, side, notional, rules) if rules else 0.0
+    except (TypeError, ValueError, OverflowError):
+        raise HTTPException(status_code=400, detail="无效的模拟成交费用")
     total_cost = notional + commission
+    if not math.isfinite(commission) or commission < 0 or not math.isfinite(total_cost):
+        raise HTTPException(status_code=400, detail="无效的模拟成交费用")
+
+    acc = await _get_or_create_account(current_user["id"])
 
     # 7. 获取持仓
     pos = await db["paper_positions"].find_one({"user_id": current_user["id"], "code": normalized_code})
@@ -390,106 +426,79 @@ async def place_order(payload: PlaceOrderRequest, current_user: dict = Depends(g
     now_iso = datetime.utcnow().isoformat()
     realized_pnl_delta = 0.0
 
-    # 8. 执行买卖逻辑
+    # Validate existing state and calculate all mutations before the first write.
+    cash = acc.get("cash", {})
+    pnl_balances = acc.get("realized_pnl", {})
+    available_cash = _finite_number(cash.get(currency) if isinstance(cash, dict) else cash if currency == "CNY" else None)
+    current_pnl = _finite_number(pnl_balances.get(currency) if isinstance(pnl_balances, dict) else pnl_balances if currency == "CNY" else None)
+    old_qty = _valid_quantity(pos.get("quantity")) if pos else 0
+    stored_available = _valid_quantity(pos.get("available_qty", old_qty)) if pos else 0
+    old_cost = _finite_number(pos.get("avg_cost")) if pos else price
+    if (available_cash is None or available_cash < 0 or current_pnl is None
+            or old_qty is None or stored_available is None or old_cost is None or old_cost < 0):
+        raise HTTPException(status_code=409, detail="模拟账户或持仓数据异常，请先核对数据")
+
     if side == "buy":
-        # 资金检查（使用对应货币的账户）
-        cash = acc.get("cash", {})
-        if isinstance(cash, dict):
-            available_cash = float(cash.get(currency, 0.0))
-        else:
-            # 兼容旧格式
-            available_cash = float(cash) if currency == "CNY" else 0.0
-
         if available_cash < total_cost:
-            raise HTTPException(
-                status_code=400,
-                detail=f"可用{currency}不足：需要 {total_cost:.2f}，可用 {available_cash:.2f}"
-            )
-
-        # 扣除资金（从对应货币账户）
-        new_cash = round(available_cash - total_cost, 2)
+            raise HTTPException(status_code=400, detail=f"可用{currency}不足")
+        new_cash = _finite_amount(available_cash - total_cost)
+        new_qty = old_qty + qty
+        if new_qty > MAX_QUANTITY:
+            raise HTTPException(status_code=409, detail="模拟持仓数量超出范围")
+        try:
+            average = (old_cost * old_qty + price * qty) / new_qty
+            new_avg = round(average, 4) if math.isfinite(average) else None
+        except OverflowError:
+            new_avg = None
+        new_available = stored_available if pos and market == "CN" else (0 if market == "CN" else new_qty)
+        if new_cash is None or new_avg is None:
+            raise HTTPException(status_code=409, detail="模拟交易计算结果无效")
+        position_update = dict(quantity=new_qty, available_qty=new_available, avg_cost=new_avg, updated_at=now_iso)
+        account_updates = {f"cash.{currency}": new_cash} if isinstance(cash, dict) else {
+            "cash": {"CNY": new_cash, "HKD": None, "USD": None}}
+        if not isinstance(pnl_balances, dict):
+            account_updates["realized_pnl"] = {"CNY": current_pnl, "HKD": None, "USD": None}
         await db["paper_accounts"].update_one(
             {"user_id": current_user["id"]},
-            {"$set": {f"cash.{currency}": new_cash, "updated_at": now_iso}}
+            {"$set": {**account_updates, "updated_at": now_iso}}
         )
-
-        # 更新/创建持仓：加权平均成本
         if not pos:
-            new_pos = {
-                "user_id": current_user["id"],
-                "code": normalized_code,
-                "market": market,
-                "currency": currency,
-                "quantity": qty,
-                "available_qty": qty if market != "CN" else 0,  # A股T+1，今天买入不可用
-                "frozen_qty": 0,
-                "avg_cost": price,
-                "updated_at": now_iso
-            }
-            await db["paper_positions"].insert_one(new_pos)
+            await db["paper_positions"].insert_one(dict(
+                user_id=current_user["id"], code=normalized_code, market=market,
+                currency=currency, frozen_qty=0, **position_update))
         else:
-            old_qty = int(pos.get("quantity", 0))
-            old_cost = float(pos.get("avg_cost", 0.0))
-            new_qty = old_qty + qty
-            new_avg = round((old_cost * old_qty + price * qty) / new_qty, 4) if new_qty > 0 else price
-
-            # A股T+1：新买入的不可用
-            if market == "CN":
-                new_available = pos.get("available_qty", old_qty)  # 保持原有可用数量
-            else:
-                new_available = new_qty  # 港股/美股T+0，全部可用
-
-            await db["paper_positions"].update_one(
-                {"_id": pos["_id"]},
-                {"$set": {
-                    "quantity": new_qty,
-                    "available_qty": new_available,
-                    "avg_cost": new_avg,
-                    "updated_at": now_iso
-                }}
-            )
-
-    else:  # sell
-        # 检查可用数量（考虑T+1）
+            await db["paper_positions"].update_one({"_id": pos["_id"]}, {"$set": position_update})
+    else:
         available_qty = await _get_available_quantity(current_user["id"], normalized_code, market)
-        if available_qty < qty:
-            raise HTTPException(
-                status_code=400,
-                detail=f"可用持仓不足：需要 {qty}，可用 {available_qty}"
-            )
-
-        old_qty = int(pos.get("quantity", 0))
-        avg_cost = float(pos.get("avg_cost", 0.0))
+        if not pos or available_qty < qty or old_qty < qty:
+            raise HTTPException(status_code=400, detail="可用持仓不足")
         new_qty = old_qty - qty
-        pnl = round((price - avg_cost) * qty, 2)
-        realized_pnl_delta = pnl
-
-        # 卖出收入（加到对应货币账户，扣除手续费）
-        net_proceeds = notional - commission
-        await db["paper_accounts"].update_one(
-            {"user_id": current_user["id"]},
-            {
-                "$inc": {
-                    f"cash.{currency}": net_proceeds,
-                    f"realized_pnl.{currency}": realized_pnl_delta
-                },
-                "$set": {"updated_at": now_iso}
-            }
-        )
-
-        # 更新持仓
+        realized_pnl_delta = _finite_amount((price - old_cost) * qty)
+        net_proceeds = _finite_amount(notional - commission)
+        new_cash = _finite_amount(available_cash + net_proceeds) if net_proceeds is not None else None
+        updated_pnl = _finite_amount(current_pnl + realized_pnl_delta) if realized_pnl_delta is not None else None
+        new_available = max(0, stored_available - qty)
+        if new_cash is None or new_cash < 0 or updated_pnl is None:
+            raise HTTPException(status_code=409, detail="模拟交易计算结果无效")
+        account_updates = {"$set": {"updated_at": now_iso}}
+        increments = {}
+        for field, balance, value, delta in (
+            ("cash", cash, new_cash, net_proceeds),
+            ("realized_pnl", pnl_balances, updated_pnl, realized_pnl_delta),
+        ):
+            if isinstance(balance, dict):
+                increments[f"{field}.{currency}"] = delta
+            else:
+                account_updates["$set"][field] = {"CNY": value, "HKD": None, "USD": None}
+        if increments:
+            account_updates["$inc"] = increments
+        await db["paper_accounts"].update_one({"user_id": current_user["id"]}, account_updates)
         if new_qty == 0:
             await db["paper_positions"].delete_one({"_id": pos["_id"]})
         else:
-            new_available = max(0, pos.get("available_qty", old_qty) - qty)
             await db["paper_positions"].update_one(
                 {"_id": pos["_id"]},
-                {"$set": {
-                    "quantity": new_qty,
-                    "available_qty": new_available,
-                    "updated_at": now_iso
-                }}
-            )
+                {"$set": dict(quantity=new_qty, available_qty=new_available, updated_at=now_iso)})
 
     # 9. 记录订单与成交（即成）
     order_doc = {
@@ -540,12 +549,14 @@ async def list_positions(current_user: dict = Depends(get_current_user)):
         code = p.get("code")
         market = p.get("market", "CN")
         currency = p.get("currency", "CNY")
-        qty = int(p.get("quantity", 0))
-        available_qty = p.get("available_qty", qty)
-        avg_cost = float(p.get("avg_cost", 0.0))
+        qty = _valid_quantity(p.get("quantity"))
+        available_qty = _valid_quantity(p.get("available_qty", qty))
+        avg_cost = _finite_number(p.get("avg_cost"))
+        if avg_cost is not None and avg_cost < 0:
+            avg_cost = None
 
         last = await _get_last_price(code, market)
-        mkt = round((last or 0.0) * qty, 2)
+        valuation = _position_value(last, qty, avg_cost)
         enriched.append({
             "code": code,
             "market": market,
@@ -553,9 +564,7 @@ async def list_positions(current_user: dict = Depends(get_current_user)):
             "quantity": qty,
             "available_qty": available_qty,
             "avg_cost": avg_cost,
-            "last_price": last,
-            "market_value": mkt,
-            "unrealized_pnl": None if last is None else round((last - avg_cost) * qty, 2)
+            **valuation
         })
     return ok({"items": enriched})
 

@@ -230,20 +230,22 @@
           </template>
 
           <div v-if="paperAccount" class="paper-account-info">
+            <el-alert v-if="Object.values(paperAccount.valuation_status ?? {}).includes('unavailable')"
+              title="部分资金、持仓或报价数据不可用，相关估值显示为未知。" type="warning" :closable="false" />
             <!-- A股账户 -->
             <div class="account-section">
               <div class="account-section-title">🇨🇳 A股账户</div>
               <div class="account-item">
                 <div class="account-label">现金</div>
-                <div class="account-value">¥{{ formatMoney(currencyValue(paperAccount.cash, 'CNY') ?? 0) }}</div>
+                <div class="account-value">¥{{ formatMoney(currencyValue(paperAccount.cash, 'CNY')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">持仓市值</div>
-                <div class="account-value">¥{{ formatMoney(currencyValue(paperAccount.positions_value, 'CNY') ?? 0) }}</div>
+                <div class="account-value">¥{{ formatMoney(currencyValue(paperAccount.positions_value, 'CNY')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">总资产</div>
-                <div class="account-value primary">¥{{ formatMoney(currencyValue(paperAccount.equity, 'CNY') ?? 0) }}</div>
+                <div class="account-value primary">¥{{ formatMoney(currencyValue(paperAccount.equity, 'CNY')) }}</div>
               </div>
             </div>
 
@@ -252,15 +254,15 @@
               <div class="account-section-title">🇭🇰 港股账户</div>
               <div class="account-item">
                 <div class="account-label">现金</div>
-                <div class="account-value">HK${{ formatMoney((currencyValue(paperAccount.cash, 'HKD') ?? 0)) }}</div>
+                <div class="account-value">HK${{ formatMoney((currencyValue(paperAccount.cash, 'HKD'))) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">持仓市值</div>
-                <div class="account-value">HK${{ formatMoney(currencyValue(paperAccount.positions_value, 'HKD') || 0) }}</div>
+                <div class="account-value">HK${{ formatMoney(currencyValue(paperAccount.positions_value, 'HKD')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">总资产</div>
-                <div class="account-value primary">HK${{ formatMoney(currencyValue(paperAccount.equity, 'HKD') || 0) }}</div>
+                <div class="account-value primary">HK${{ formatMoney(currencyValue(paperAccount.equity, 'HKD')) }}</div>
               </div>
             </div>
 
@@ -269,15 +271,15 @@
               <div class="account-section-title">🇺🇸 美股账户</div>
               <div class="account-item">
                 <div class="account-label">现金</div>
-                <div class="account-value">${{ formatMoney((currencyValue(paperAccount.cash, 'USD') ?? 0)) }}</div>
+                <div class="account-value">${{ formatMoney((currencyValue(paperAccount.cash, 'USD'))) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">持仓市值</div>
-                <div class="account-value">${{ formatMoney(currencyValue(paperAccount.positions_value, 'USD') || 0) }}</div>
+                <div class="account-value">${{ formatMoney(currencyValue(paperAccount.positions_value, 'USD')) }}</div>
               </div>
               <div class="account-item">
                 <div class="account-label">总资产</div>
-                <div class="account-value primary">${{ formatMoney(currencyValue(paperAccount.equity, 'USD') || 0) }}</div>
+                <div class="account-value primary">${{ formatMoney(currencyValue(paperAccount.equity, 'USD')) }}</div>
               </div>
             </div>
           </div>
@@ -299,7 +301,7 @@
 </template>
 
 <script setup lang="ts">
-import { currencyValue } from '@/utils/paperBalances'
+import { currencyValue, formatPaperAmount } from '@/utils/paperBalances'
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
@@ -561,9 +563,7 @@ const goToPaperTrading = () => {
 }
 
 // 格式化金额
-const formatMoney = (value: number) => {
-  return value.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',')
-}
+const formatMoney = (value: number | null | undefined) => formatPaperAmount(value, true)
 
 // 获取盈亏样式类
 

@@ -290,7 +290,8 @@ import { useAuthStore } from '@/stores/auth'
 import { marked } from 'marked'
 import type { AnalysisReport } from '@/types/reports'
 import { getMarketByStockCode } from '@/utils/market'
-import type { PaperAccountSummary, CurrencyAmount } from '@/api/paper'
+import { paperCashForMarket } from '@/utils/paperBalances'
+import type { PaperAccountSummary } from '@/api/paper'
 
 // 路由和认证
 const route = useRoute()
@@ -476,31 +477,8 @@ const parseRecommendation = () => {
 }
 
 // 辅助函数：根据股票代码获取对应货币的现金金额
-const getCashByCurrency = (account: PaperAccountSummary, stockSymbol: string): number => {
-  const cash = account.cash
-
-  // 兼容旧格式（单一数字）
-  if (typeof cash === 'number') {
-    return cash
-  }
-
-  // 新格式（多货币对象）
-  if (typeof cash === 'object' && cash !== null) {
-    // 根据股票代码判断市场类型
-    const marketType = getMarketByStockCode(stockSymbol)
-
-    // 映射市场类型到货币
-    const currencyMap: Record<string, keyof CurrencyAmount> = {
-      'A股': 'CNY',
-      '港股': 'HKD',
-      '美股': 'USD'
-    }
-
-    const currency = currencyMap[marketType] || 'CNY'
-    return cash[currency] || 0
-  }
-
-  return 0
+const getCashByCurrency = (account: PaperAccountSummary, stockSymbol: string): number | undefined => {
+  return paperCashForMarket(account.cash, getMarketByStockCode(stockSymbol))
 }
 
 // 应用到模拟交易
@@ -544,6 +522,9 @@ const applyToTrading = async () => {
 
     // 获取对应货币的可用资金
     const availableCash = getCashByCurrency(account, currentReport.stock_symbol)
+    if (availableCash === undefined) {
+      ElMessage.error('对应货币余额不可用，不能生成模拟交易'); return
+    }
 
     // 计算建议交易数量
     let suggestedQuantity = 0
@@ -557,7 +538,7 @@ const applyToTrading = async () => {
       suggestedQuantity = Math.max(100, suggestedQuantity) // 至少100股
     } else {
       // 卖出：根据当前持仓计算
-      if (!currentPosition || currentPosition.quantity === 0) {
+      if (!currentPosition || currentPosition.quantity == null || currentPosition.quantity <= 0) {
         ElMessage.warning('当前没有持仓，无法卖出')
         return
       }

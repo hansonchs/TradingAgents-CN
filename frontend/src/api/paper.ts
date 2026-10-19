@@ -6,20 +6,24 @@ export interface CurrencyAmount {
   USD: number
 }
 
+export type ValuationAmount = { [K in keyof CurrencyAmount]: number | null }
+
 export interface PaperAccountSummary {
-  cash: CurrencyAmount | number  // 支持新旧格式
-  realized_pnl: CurrencyAmount | number  // 支持新旧格式
-  positions_value: CurrencyAmount
-  equity: CurrencyAmount | number  // 支持新旧格式
+  cash: ValuationAmount | number  // 支持新旧格式
+  realized_pnl: ValuationAmount | number  // 支持新旧格式
+  positions_value: ValuationAmount
+  equity: ValuationAmount | number  // 支持新旧格式
+  valuation_status?: Partial<Record<keyof CurrencyAmount, 'available' | 'unavailable'>>
   updated_at?: string
 }
 
 export interface PaperPositionItem {
   code: string
-  quantity: number
-  avg_cost: number
+  quantity: number | null
+  avg_cost: number | null
   last_price?: number | null
-  market_value?: number
+  market_value?: number | null
+  valuation_status?: 'available' | 'unavailable'
   unrealized_pnl?: number | null
 }
 

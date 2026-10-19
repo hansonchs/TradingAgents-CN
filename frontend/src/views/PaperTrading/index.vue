@@ -43,16 +43,18 @@
         <el-card shadow="hover" class="account-card">
           <template #header><div class="card-hd">账户信息</div></template>
           <div v-if="account">
+            <el-alert v-if="Object.values(account.valuation_status ?? {}).includes('unavailable')"
+              title="部分资金、持仓或报价数据不可用，相关估值显示为未知。" type="warning" :closable="false" />
             <el-tabs v-model="activeMarketTab" type="border-card">
               <!-- A股账户 -->
               <el-tab-pane label="🇨🇳 A股" name="CN">
                 <el-descriptions :column="1" border>
-                  <el-descriptions-item label="可用资金">¥{{ fmtAmount(account.cash?.CNY || account.cash) }}</el-descriptions-item>
-                  <el-descriptions-item label="持仓市值">¥{{ fmtAmount(account.positions_value?.CNY || account.positions_value) }}</el-descriptions-item>
-                  <el-descriptions-item label="总资产">¥{{ fmtAmount(account.equity?.CNY || account.equity) }}</el-descriptions-item>
+                  <el-descriptions-item label="可用资金">¥{{ fmtAmount(currencyValue(account.cash, 'CNY')) }}</el-descriptions-item>
+                  <el-descriptions-item label="持仓市值">¥{{ fmtAmount(currencyValue(account.positions_value, 'CNY')) }}</el-descriptions-item>
+                  <el-descriptions-item label="总资产">¥{{ fmtAmount(currencyValue(account.equity, 'CNY')) }}</el-descriptions-item>
                   <el-descriptions-item label="已实现盈亏">
-                    <span :style="{ color: (account.realized_pnl?.CNY !== undefined ? account.realized_pnl.CNY : (typeof account.realized_pnl === 'number' ? account.realized_pnl : 0)) >= 0 ? '#67C23A' : '#F56C6C' }">
-                      ¥{{ fmtAmount(account.realized_pnl?.CNY !== undefined ? account.realized_pnl.CNY : (typeof account.realized_pnl === 'number' ? account.realized_pnl : 0)) }}
+                    <span :style="{ color: currencyValue(account.realized_pnl, 'CNY') == null ? '#909399' : ((currencyValue(account.realized_pnl, 'CNY') ?? 0) >= 0 ? '#67C23A' : '#F56C6C') }">
+                      ¥{{ fmtAmount(currencyValue(account.realized_pnl, 'CNY')) }}
                     </span>
                   </el-descriptions-item>
                 </el-descriptions>
@@ -61,12 +63,12 @@
               <!-- 港股账户 -->
               <el-tab-pane label="🇭🇰 港股" name="HK">
                 <el-descriptions :column="1" border>
-                  <el-descriptions-item label="可用资金">HK${{ fmtAmount(account.cash?.HKD || 0) }}</el-descriptions-item>
-                  <el-descriptions-item label="持仓市值">HK${{ fmtAmount(account.positions_value?.HKD || 0) }}</el-descriptions-item>
-                  <el-descriptions-item label="总资产">HK${{ fmtAmount(account.equity?.HKD || 0) }}</el-descriptions-item>
+                  <el-descriptions-item label="可用资金">HK${{ fmtAmount(currencyValue(account.cash, 'HKD')) }}</el-descriptions-item>
+                  <el-descriptions-item label="持仓市值">HK${{ fmtAmount(currencyValue(account.positions_value, 'HKD')) }}</el-descriptions-item>
+                  <el-descriptions-item label="总资产">HK${{ fmtAmount(currencyValue(account.equity, 'HKD')) }}</el-descriptions-item>
                   <el-descriptions-item label="已实现盈亏">
-                    <span :style="{ color: (account.realized_pnl?.HKD || 0) >= 0 ? '#67C23A' : '#F56C6C' }">
-                      HK${{ fmtAmount(account.realized_pnl?.HKD || 0) }}
+                    <span :style="{ color: currencyValue(account.realized_pnl, 'HKD') == null ? '#909399' : ((currencyValue(account.realized_pnl, 'HKD') ?? 0) >= 0 ? '#67C23A' : '#F56C6C') }">
+                      HK${{ fmtAmount(currencyValue(account.realized_pnl, 'HKD')) }}
                     </span>
                   </el-descriptions-item>
                 </el-descriptions>
@@ -75,12 +77,12 @@
               <!-- 美股账户 -->
               <el-tab-pane label="🇺🇸 美股" name="US">
                 <el-descriptions :column="1" border>
-                  <el-descriptions-item label="可用资金">${{ fmtAmount(account.cash?.USD || 0) }}</el-descriptions-item>
-                  <el-descriptions-item label="持仓市值">${{ fmtAmount(account.positions_value?.USD || 0) }}</el-descriptions-item>
-                  <el-descriptions-item label="总资产">${{ fmtAmount(account.equity?.USD || 0) }}</el-descriptions-item>
+                  <el-descriptions-item label="可用资金">${{ fmtAmount(currencyValue(account.cash, 'USD')) }}</el-descriptions-item>
+                  <el-descriptions-item label="持仓市值">${{ fmtAmount(currencyValue(account.positions_value, 'USD')) }}</el-descriptions-item>
+                  <el-descriptions-item label="总资产">${{ fmtAmount(currencyValue(account.equity, 'USD')) }}</el-descriptions-item>
                   <el-descriptions-item label="已实现盈亏">
-                    <span :style="{ color: (account.realized_pnl?.USD || 0) >= 0 ? '#67C23A' : '#F56C6C' }">
-                      ${{ fmtAmount(account.realized_pnl?.USD || 0) }}
+                    <span :style="{ color: currencyValue(account.realized_pnl, 'USD') == null ? '#909399' : ((currencyValue(account.realized_pnl, 'USD') ?? 0) >= 0 ? '#67C23A' : '#F56C6C') }">
+                      ${{ fmtAmount(currencyValue(account.realized_pnl, 'USD')) }}
                     </span>
                   </el-descriptions-item>
                 </el-descriptions>
@@ -124,7 +126,7 @@
             </el-table-column>
             <el-table-column label="数量" width="80">
               <template #default="{ row }">
-                {{ row.quantity }}
+                {{ row.quantity ?? '未知' }}
                 <span v-if="row.available_qty !== undefined && row.available_qty < row.quantity" style="color: #909399; font-size: 11px">
                   (可用{{ row.available_qty }})
                 </span>
@@ -138,8 +140,8 @@
             </el-table-column>
             <el-table-column label="浮盈" width="120">
               <template #default="{ row }">
-                <span :style="{ color: (Number(row.last_price || 0) - Number(row.avg_cost || 0)) >= 0 ? '#67C23A' : '#F56C6C' }">
-                  {{ getCurrencySymbol(row.currency) }}{{ fmtAmount((Number(row.last_price || 0) - Number(row.avg_cost || 0)) * Number(row.quantity || 0)) }}
+                <span :style="{ color: row.unrealized_pnl == null ? '#909399' : (row.unrealized_pnl >= 0 ? '#67C23A' : '#F56C6C') }">
+                  {{ getCurrencySymbol(row.currency) }}{{ fmtAmount(row.unrealized_pnl) }}
                 </span>
               </template>
             </el-table-column>
@@ -261,17 +263,18 @@ import { ref, onMounted, computed } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { CreditCard, Refresh, Plus, Delete } from '@element-plus/icons-vue'
-import { paperApi } from '@/api/paper'
+import { paperApi, type PaperAccountSummary } from '@/api/paper'
 import { analysisApi } from '@/api/analysis'
 import { stocksApi } from '@/api/stocks'
 import { formatDateTime } from '@/utils/datetime'
+import { currencyValue, formatPaperAmount } from '@/utils/paperBalances'
 
 // 路由与初始化
 const route = useRoute()
 const router = useRouter()
 
 // 数据
-const account = ref<any | null>(null)
+const account = ref<PaperAccountSummary | null>(null)
 const positions = ref<any[]>([])
 const orders = ref<any[]>([])
 const loading = ref({ account: false, positions: false, orders: false })
@@ -304,14 +307,8 @@ const analysisContext = ref<any | null>(null)
 const analysisLoading = ref(false)
 
 // 方法
-function fmtPrice(n: number | null | undefined) {
-  if (n == null || Number.isNaN(n as any)) return '-'
-  return Number(n).toFixed(2)
-}
-function fmtAmount(n: number | null | undefined) {
-  if (n == null || Number.isNaN(n as any)) return '-'
-  return Number(n).toFixed(2)
-}
+const fmtPrice = formatPaperAmount
+const fmtAmount = formatPaperAmount
 
 // 获取货币符号
 function getCurrencySymbol(currency: string | undefined) {

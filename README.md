@@ -1,6 +1,6 @@
 # TradingAgents 中文增强版
 
-本工作区定位为研究 sandbox，暂无独立落单权限。LLM 辩论并非券商风控；provider 失败会保留 `analysis_status=unavailable`，不能当成完成分析或持有批准。基本面／新闻输入分开，关闭 `SYNC_STOCK_BASICS_ENABLED` 亦会关闭启动同步。前端严格类型检查及 production build 已通过；真实登录、数据和部署验收仍待完成。参见 [研究边界与验证](docs/WORKSPACE_RESEARCH.md)。
+本工作区定位为研究 sandbox，暂无独立落单权限。LLM 辩论并非券商风控；provider 失败会保留 `analysis_status=unavailable`，不能当成完成分析或持有批准。基本面／新闻输入分开，关闭 `SYNC_STOCK_BASICS_ENABLED` 亦会关闭启动同步。前端严格类型检查及 production build 已通过；真实登录、数据和部署验收仍待完成。参见 [研究边界与验证](docs/WORKSPACE_RESEARCH.md)及[本地模拟估值契约](docs/PAPER_VALUATION.md)。
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/)
