@@ -8,13 +8,14 @@ These tests avoid touching real DB/Redis by mocking.
 """
 
 import asyncio
+import pytest
 from fastapi import FastAPI, Depends
 from fastapi.testclient import TestClient
 
 # Import router and dependencies to override
 from app.routers import sse as sse_router_mod
 from app.routers.sse import router as sse_router
-from app.routers.auth import get_current_user
+from app.routers.auth_db import get_current_user
 from app.services.queue_service import QueueService, get_queue_service as real_get_queue_service
 
 
@@ -55,6 +56,18 @@ def make_test_app(fake_queue_service: QueueService):
     app.dependency_overrides[real_get_queue_service] = _get_qsvc
 
     return app
+
+
+@pytest.fixture(autouse=True)
+def offline_stream_config(monkeypatch):
+    # TestClient buffers streams until completion; use real short idle termination.
+    from app.services.config_provider import provider
+    async def effective():
+        return dict(sse_poll_timeout_seconds=0.01, sse_task_max_idle_seconds=0.02,
+                    sse_heartbeat_interval_seconds=1, sse_batch_poll_interval_seconds=0.01,
+                    sse_batch_max_idle_seconds=0.02)
+    monkeypatch.setattr(provider, "get_effective_system_settings", effective)
+    monkeypatch.setattr(sse_router_mod, "get_queue_service", lambda: FakeQueueService())
 
 
 # ---------- Tests: SSE ----------

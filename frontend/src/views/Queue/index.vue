@@ -130,11 +130,11 @@
         </el-descriptions>
         <div style="margin-top: 16px;">
           <h4>建议</h4>
-          <div class="markdown-content" v-html="renderMarkdown(resultData.recommendation || '无')"></div>
+          <div class="markdown-content" v-html="sanitizeHtml(renderMarkdown(resultData.recommendation || '无'))"></div>
         </div>
         <div style="margin-top: 16px;">
           <h4>摘要</h4>
-          <div class="markdown-content" v-html="renderMarkdown(resultData.summary || '无')"></div>
+          <div class="markdown-content" v-html="sanitizeHtml(renderMarkdown(resultData.summary || '无'))"></div>
         </div>
       </div>
       <template #footer>
@@ -168,7 +168,7 @@
             <div
               v-if="typeof sec.content === 'string'"
               class="markdown-content"
-              v-html="renderMarkdown(sec.content)"
+              v-html="sanitizeHtml(renderMarkdown(sec.content))"
             ></div>
             <div v-else class="json-content">
               <pre>{{ JSON.stringify(sec.content, null, 2) }}</pre>
@@ -185,6 +185,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeHtml } from '@/utils/safeHtml'
 import { ref, onMounted, onUnmounted, watch } from 'vue'
 
 import { analysisApi } from '@/api/analysis'

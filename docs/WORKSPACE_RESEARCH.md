@@ -1,0 +1,9 @@
+# Trading workspace research boundary
+
+The canonical rulebook is `stock-fundamental/TRADING_RULEBOOK.md`; paper execution and broker checks belong in stock-analysis. This project provides optional research and citations. An LLM risk debate is not an independent hard gate and cannot authorize orders or alter portfolio bucket rules.
+
+The risk-manager memory now receives the actual fundamentals report separately from news. Empty, short and failed provider responses retain `analysis_status=unavailable`, including graph logs and formatted decision metadata; they do not claim a validated HOLD recommendation. Old results without the field are `unknown`. Successful research status means usable provider text was returned, not factual verification. A research consumer must still check source/publication/retrieval times, claims, counterevidence and unknowns. No such automatic execution consumer is added here.
+
+The startup stock sync now respects `SYNC_STOCK_BASICS_ENABLED`; setup can run without unsolicited initial provider requests. API transport exposes explicit raw-body methods for config/log routes while retaining ApiResponse methods for envelope routes. Request logging no longer prints token prefixes, headers or full request/response payloads in the edited interceptor; this is not an audit of every log statement in the application.
+
+Offline verification: the selected backend regressions now pass **64 tests**, including two-user HTTP/WebSocket isolation, unavailable research/news, provider update contracts, shared consistency checks and SSE/worker configuration. `cd frontend && npm run test:ui-contracts && npm run build` passes the actual sanitizer/transport checks and strict TypeScript + Vite production build. No strict/unused check was disabled. Real browser/authentication, provider data and deployment acceptance remain outstanding. See [repair validation](RESEARCH_REPAIR_VALIDATION.md) for commands and limits.

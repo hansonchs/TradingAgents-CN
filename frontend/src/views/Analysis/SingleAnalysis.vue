@@ -547,14 +547,14 @@
                         </div>
                         <div class="metric-item">
                           <span class="label">模型置信度:</span>
-                          <span class="value">{{ (analysisResults.decision.confidence * 100).toFixed(1) }}%</span>
+                          <span class="value">{{ formatResearchPercent(analysisResults.decision.confidence) }}</span>
                           <el-tooltip content="基于AI模型计算的置信度，不代表实际投资成功率" placement="top">
                             <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
                           </el-tooltip>
                         </div>
                         <div class="metric-item">
                           <span class="label">风险评分:</span>
-                          <span class="value">{{ (analysisResults.decision.risk_score * 100).toFixed(1) }}%</span>
+                          <span class="value">{{ formatResearchPercent(analysisResults.decision.risk_score) }}</span>
                           <el-tooltip content="基于历史数据的风险评估，实际风险可能更高" placement="top">
                             <el-icon style="margin-left: 4px; cursor: help;"><QuestionFilled /></el-icon>
                           </el-tooltip>
@@ -624,7 +624,7 @@
                         <div class="report-content-wrapper">
                           <div
                             class="report-content"
-                            v-html="formatReportContent(report.content)"
+                            v-html="sanitizeHtml(formatReportContent(report.content))"
                             v-if="report.content"
                           ></div>
                           <div v-else class="no-content">
@@ -688,6 +688,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeHtml } from '@/utils/safeHtml'
 import { ref, reactive, onMounted, onUnmounted, computed, h } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox, ElInputNumber } from 'element-plus'
@@ -714,9 +715,11 @@ import { configApi } from '@/api/config'
 import DeepModelSelector from '@/components/DeepModelSelector.vue'
 import { ANALYSTS, convertAnalystNamesToIds } from '@/constants/analysts'
 import { marked } from 'marked'
-import { recommendModels, validateModels, type ModelRecommendationResponse } from '@/api/modelCapabilities'
-import { validateStockCode, getStockCodeFormatHelp, getStockCodeExamples } from '@/utils/stockValidator'
+import { recommendModels } from '@/api/modelCapabilities'
+import { validateStockCode, getStockCodeFormatHelp } from '@/utils/stockValidator'
 import { normalizeMarketForAnalysis, getMarketByStockCode } from '@/utils/market'
+import { paperCashForMarket } from '@/utils/paperBalances'
+import { formatResearchPercent, canSimulateResearch } from '@/utils/researchDecision'
 
 // 配置marked选项
 marked.setOptions({
@@ -741,7 +744,7 @@ interface AnalysisForm {
 }
 
 // 使用store
-const appStore = useAppStore()
+useAppStore()
 const authStore = useAuthStore()
 const router = useRouter()
 const route = useRoute()
@@ -1487,7 +1490,7 @@ const getFileExtension = (format: string): string => {
 
 // 解析投资建议
 const parseRecommendation = () => {
-  if (!analysisResults.value) return null
+  if (!canSimulateResearch(analysisResults.value)) return null
 
   // 从多个可能的字段中提取投资建议
   const rec = analysisResults.value.recommendation ||
@@ -1544,6 +1547,10 @@ const goSimOrder = async () => {
       return
     }
 
+    if (!canSimulateResearch(analysisResults.value)) {
+      ElMessage.warning('研究未完成或状态未知，不能生成模拟交易'); return
+    }
+
     // 获取股票代码（兼容新旧字段）
     const code = analysisResults.value.symbol ||
                  analysisResults.value.stock_symbol ||
@@ -1576,14 +1583,22 @@ const goSimOrder = async () => {
     const currentPosition = positions.find(p => p.code === code)
 
     // 获取当前实时价格
-    let currentPrice = 10 // 默认价格
+    let currentPrice = 0
     try {
       const quoteRes = await stocksApi.getQuote(code)
       if (quoteRes.success && quoteRes.data && quoteRes.data.price) {
         currentPrice = quoteRes.data.price
       }
     } catch (error) {
-      console.warn('获取实时价格失败，使用默认价格')
+      ElMessage.error('实时价格不可用，不能生成模拟交易'); return
+    }
+
+    if (!Number.isFinite(currentPrice) || currentPrice <= 0) {
+      ElMessage.error('实时价格不可用，不能生成模拟交易'); return
+    }
+    const availableCash = paperCashForMarket(account.cash, getMarketByStockCode(code))
+    if (availableCash === undefined) {
+      ElMessage.error('对应货币余额不可用，不能生成模拟交易'); return
     }
 
     // 计算建议交易数量
@@ -1592,14 +1607,13 @@ const goSimOrder = async () => {
 
     if (recommendation.action === 'buy') {
       // 买入：根据可用资金和当前价格计算
-      const availableCash = account.cash
-      maxQuantity = Math.floor(Number(availableCash) / Number(currentPrice) / 100) * 100 // 100股为单位
+      maxQuantity = Math.floor(availableCash / currentPrice / 100) * 100 // 100股为单位
       const suggested = Math.floor(maxQuantity * 0.2) // 建议使用20%资金
       suggestedQuantity = Math.floor(suggested / 100) * 100 // 向下取整到100的倍数
       suggestedQuantity = Math.max(100, suggestedQuantity) // 至少100股
     } else {
       // 卖出：根据当前持仓计算
-      if (!currentPosition || currentPosition.quantity === 0) {
+      if (!currentPosition || currentPosition.quantity == null || currentPosition.quantity <= 0) {
         ElMessage.warning('当前没有持仓，无法卖出')
         return
       }
@@ -1683,7 +1697,7 @@ const goSimOrder = async () => {
             h('span', recommendation.riskLevel)
           ]),
           recommendation.action === 'buy' ? h('p', { style: 'color: #909399; font-size: 12px; margin-top: 12px;' },
-            `可用资金：${typeof account.cash === 'number' ? account.cash.toFixed(2) : account.cash}元，最大可买：${maxQuantity}股`
+            `可用资金：${availableCash.toFixed(2)}元，最大可买：${maxQuantity}股`
           ) : null,
           recommendation.action === 'sell' ? h('p', { style: 'color: #909399; font-size: 12px; margin-top: 12px;' },
             `当前持仓：${maxQuantity}股`
@@ -1698,7 +1712,7 @@ const goSimOrder = async () => {
       confirmButtonText: '确认下单',
       cancelButtonText: '取消',
       type: 'warning',
-      beforeClose: (action, instance, done) => {
+      beforeClose: (action, _instance, done) => {
         if (action === 'confirm') {
           // 验证输入
           if (tradeForm.quantity < 100 || tradeForm.quantity % 100 !== 0) {
@@ -1717,7 +1731,7 @@ const goSimOrder = async () => {
           // 检查资金是否充足
           if (recommendation.action === 'buy') {
             const totalAmount = tradeForm.price * tradeForm.quantity
-            if (totalAmount > Number(account.cash)) {
+            if (totalAmount > availableCash) {
               ElMessage.error('可用资金不足')
               return
             }
@@ -2065,10 +2079,7 @@ const isQuickAnalysisRole = (roles: string[] | undefined): boolean => {
 /**
  * 判断是否适合深度分析
  */
-const isDeepAnalysisRole = (roles: string[] | undefined): boolean => {
-  if (!roles || !Array.isArray(roles)) return false
-  return roles.includes('deep_analysis') || roles.includes('both')
-}
+
 
 /**
  * 显示分析深度的模型推荐说明

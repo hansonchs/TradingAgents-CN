@@ -18,6 +18,9 @@ import logging
 
 logger = logging.getLogger("webapi")
 
+from app.utils.ownership import owned_query as _owned_report_query
+
+
 # 股票名称缓存
 _stock_name_cache = {}
 
@@ -134,7 +137,7 @@ async def get_reports_list(
         db = get_mongo_db()
 
         # 构建查询条件
-        query = {}
+        query = _owned_report_query({}, user)
 
         # 搜索关键词
         if search_keyword:
@@ -247,14 +250,14 @@ async def get_report_detail(
         db = get_mongo_db()
 
         # 支持 ObjectId / analysis_id / task_id
-        query = _build_report_query(report_id)
+        query = _owned_report_query(_build_report_query(report_id), user)
         doc = await db.analysis_reports.find_one(query)
 
         if not doc:
             # 兜底：从 analysis_tasks.result 中还原报告详情
             logger.info(f"⚠️ 未在analysis_reports找到，尝试从analysis_tasks还原: {report_id}")
             tasks_doc = await db.analysis_tasks.find_one(
-                {"$or": [{"task_id": report_id}, {"result.analysis_id": report_id}]},
+                _owned_report_query({"$or": [{"task_id": report_id}, {"result.analysis_id": report_id}]}, user),
                 {"result": 1, "task_id": 1, "stock_code": 1, "created_at": 1, "completed_at": 1}
             )
             if not tasks_doc or not tasks_doc.get("result"):
@@ -340,6 +343,9 @@ async def get_report_detail(
                 "tokens_used": doc.get("tokens_used", 0)
             }
 
+        from tradingagents.utils.research_decision import research_status
+        report["analysis_status"] = research_status(doc if doc else r)
+
         return {
             "success": True,
             "data": report,
@@ -365,7 +371,7 @@ async def get_report_module_content(
         db = get_mongo_db()
 
         # 查询报告（支持多种ID）
-        query = _build_report_query(report_id)
+        query = _owned_report_query(_build_report_query(report_id), user)
         doc = await db.analysis_reports.find_one(query)
 
         if not doc:
@@ -406,7 +412,7 @@ async def delete_report(
         db = get_mongo_db()
 
         # 查询报告（支持多种ID）
-        query = _build_report_query(report_id)
+        query = _owned_report_query(_build_report_query(report_id), user)
         result = await db.analysis_reports.delete_one(query)
 
         if result.deleted_count == 0:
@@ -445,7 +451,7 @@ async def download_report(
         db = get_mongo_db()
 
         # 查询报告（支持多种ID）
-        query = _build_report_query(report_id)
+        query = _owned_report_query(_build_report_query(report_id), user)
         doc = await db.analysis_reports.find_one(query)
 
         if not doc:

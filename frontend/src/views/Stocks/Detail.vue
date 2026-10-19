@@ -164,7 +164,7 @@
                 <el-icon><Reading /></el-icon>
                 分析摘要
               </div>
-              <div class="summary-text markdown-body" v-html="renderMarkdown(lastAnalysis?.summary || '-')"></div>
+              <div class="summary-text markdown-body" v-html="sanitizeHtml(renderMarkdown(lastAnalysis?.summary || '-'))"></div>
             </div>
 
             <!-- 详细报告展示 -->
@@ -185,14 +185,14 @@
               <!-- 报告列表预览 -->
               <div class="reports-preview">
                 <el-tag
-                  v-for="(content, key) in lastAnalysis.reports"
+                  v-for="key in Object.keys(lastAnalysis.reports || {})"
                   :key="key"
                   size="small"
                   effect="plain"
                   class="report-tag"
-                  @click="openReport(key)"
+                  @click="openReport(String(key))"
                 >
-                  {{ formatReportName(key) }}
+                  {{ formatReportName(String(key)) }}
                 </el-tag>
               </div>
             </div>
@@ -211,7 +211,10 @@
               </el-select>
             </div>
           </template>
-          <el-empty v-if="newsItems.length === 0" description="暂无新闻" />
+          <el-alert v-if="newsStatus === 'unavailable' || newsStatus === 'unsupported'"
+            :title="newsStatus === 'unsupported' ? '此市场新闻暂未支持' : '新闻来源暂时不可用，不代表没有消息'"
+            type="warning" :closable="false" />
+          <el-empty v-else-if="newsItems.length === 0" description="指定时间范围内暂无新闻" />
           <div v-else class="news-list">
             <div v-for="(n, i) in filteredNews" :key="i" class="news-item">
               <div class="row">
@@ -219,7 +222,7 @@
                   <el-tag size="small" effect="plain" :type="n.type==='announcement' ? 'warning' : 'info'" class="tag">{{ n.type==='announcement' ? '公告' : '新闻' }}</el-tag>
                   <div class="title">
                     <template v-if="n.url && n.url !== '#'">
-                      <a :href="n.url" target="_blank" rel="noopener">{{ n.title || '查看详情' }}</a>
+                      <a :href="safeExternalUrl(n.url)" target="_blank" rel="noopener">{{ n.title || '查看详情' }}</a>
                       <el-icon class="ext"><Link /></el-icon>
                     </template>
                     <template v-else>
@@ -293,12 +296,12 @@
         <el-tab-pane
           v-for="(content, key) in lastAnalysis?.reports"
           :key="key"
-          :label="formatReportName(key)"
+          :label="formatReportName(String(key))"
           :name="key"
         >
           <div class="report-content">
             <el-scrollbar height="500px">
-              <div class="markdown-body" v-html="renderMarkdown(content)"></div>
+              <div class="markdown-body" v-html="sanitizeHtml(renderMarkdown(content))"></div>
             </el-scrollbar>
           </div>
         </el-tab-pane>
@@ -356,6 +359,7 @@
 </template>
 
 <script setup lang="ts">
+import { sanitizeHtml, safeExternalUrl } from '@/utils/safeHtml'
 import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -387,7 +391,7 @@ const router = useRouter()
 const analysisStatus = ref<'idle' | 'running' | 'completed' | 'failed'>('idle')
 const analysisProgress = ref(0)
 const analysisMessage = ref('')
-const currentTaskId = ref<string | null>(null)
+
 const lastAnalysis = ref<any | null>(null)
 const lastTaskInfo = ref<any | null>(null) // 保存任务信息（包含 end_time 等）
 
@@ -395,15 +399,9 @@ const lastTaskInfo = ref<any | null>(null) // 保存任务信息（包含 end_ti
 const showReportsDialog = ref(false)
 const activeReportTab = ref('')
 
-const notifStore = useNotificationStore()
+useNotificationStore()
 
-const lastAnalysisTagType = computed(() => {
-  const reco = String(lastAnalysis.value?.recommendation || '').toLowerCase()
-  if (reco.includes('买') || reco.includes('buy') || reco.includes('增持') || reco.includes('强')) return 'success'
-  if (reco.includes('卖') || reco.includes('sell')) return 'danger'
-  if (reco.includes('减持') || reco.includes('谨慎')) return 'warning'
-  return 'info'
-})
+
 
 // 股票代码（从路由参数获取）
 const code = computed(() => {
@@ -814,6 +812,7 @@ async function fetchKline() {
 const newsFilter = ref('all')
 const newsItems = ref<any[]>([])
 const newsSource = ref<string | undefined>(undefined)
+const newsStatus = ref<string | undefined>(undefined)
 
 function cleanTitle(s: any): string {
   const t = String(s || '')
@@ -834,7 +833,10 @@ async function fetchNews() {
       return { title, url, source, time, type }
     })
     newsSource.value = d.source
+    newsStatus.value = d.status
   } catch (e) {
+    newsStatus.value = 'unavailable'
+    newsItems.value = []
     console.error('获取新闻失败', e)
   }
 }
@@ -891,10 +893,7 @@ function goPaperTrading() {
   router.push({ name: 'PaperTradingHome', query: { code: code.value } })
 }
 
-function scrollToDetail() {
-  const el = document.getElementById('analysis-detail')
-  if (el) el.scrollIntoView({ behavior: 'smooth' })
-}
+
 
 // 获取最新的历史分析报告
 async function fetchLatestAnalysis() {
@@ -1116,7 +1115,7 @@ function formatReportName(key: string): string {
 function renderMarkdown(content: string): string {
   if (!content) return '<p>暂无内容</p>'
   try {
-    return marked(content)
+    return marked.parse(content, { async: false })
   } catch (e) {
     console.error('Markdown渲染失败:', e)
     return `<pre>${content}</pre>`
@@ -1158,7 +1157,7 @@ function exportReport() {
   fullReport += `---\n\n`
 
   for (const [key, content] of Object.entries(lastAnalysis.value.reports)) {
-    fullReport += `## ${formatReportName(key)}\n\n`
+    fullReport += `## ${formatReportName(String(key))}\n\n`
     fullReport += `${content}\n\n`
     fullReport += `---\n\n`
   }

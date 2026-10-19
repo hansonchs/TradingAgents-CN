@@ -580,7 +580,7 @@ const addForm = ref({
 })
 
 // 股票代码验证器
-const validateStockCode = (rule: any, value: any, callback: any) => {
+const validateStockCode = (_rule: any, value: any, callback: any) => {
   if (!value) {
     callback(new Error('请输入股票代码'))
     return
@@ -646,7 +646,7 @@ const filteredFavorites = computed<FavoriteItem[]>(() => {
   if (searchKeyword.value) {
     const keyword = searchKeyword.value.toLowerCase()
     result = result.filter((item: FavoriteItem) =>
-      item.stock_code.toLowerCase().includes(keyword) ||
+      (item.symbol || item.stock_code || '').toLowerCase().includes(keyword) ||
       item.stock_name.toLowerCase().includes(keyword)
     )
   }
@@ -974,7 +974,7 @@ const handleUpdateFavorite = async () => {
 
 const editFavorite = (row: any) => {
   editForm.value = {
-    stock_code: row.stock_code,
+    stock_code: row.symbol || row.stock_code || '',
     stock_name: row.stock_name,
     market: row.market || 'A股',
     tags: Array.isArray(row.tags) ? [...row.tags] : [],
@@ -1025,7 +1025,7 @@ const handleSelectionChange = (selection: FavoriteItem[]) => {
 // 显示单个股票同步对话框
 const showSingleSyncDialog = (row: FavoriteItem) => {
   currentSyncStock.value = {
-    stock_code: row.stock_code,
+    stock_code: row.symbol || row.stock_code || '',
     stock_name: row.stock_name
   }
   singleSyncDialogVisible.value = true
@@ -1119,7 +1119,7 @@ const handleBatchSync = async () => {
 
   batchSyncLoading.value = true
   try {
-    const symbols = selectedStocks.value.map(stock => stock.stock_code)
+    const symbols = selectedStocks.value.map(stock => stock.symbol || stock.stock_code).filter((code): code is string => typeof code === 'string' && code.length > 0)
 
     const res = await stockSyncApi.syncBatch({
       symbols,

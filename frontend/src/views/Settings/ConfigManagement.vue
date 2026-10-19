@@ -1073,25 +1073,10 @@
 </template>
 
 <script setup lang="ts">
+import type { StatusTagType } from '@/types/ui'
 import { ref, computed, watch, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import {
-  Setting,
-  Cpu,
-  DataBoard,
-  Coin,
-  Tools,
-  Download,
-  Upload,
-  Plus,
-  Refresh,
-  Key,
-  OfficeBuilding,
-  CircleCheck,
-  Collection,
-  Star,
-  Money
-} from '@element-plus/icons-vue'
+import { Setting, Cpu, DataBoard, Coin, Tools, Download, Upload, Plus, Refresh, Key, OfficeBuilding, CircleCheck, Collection } from '@element-plus/icons-vue'
 
 import {
   configApi,
@@ -1388,7 +1373,7 @@ const buildDataSourceGroups = () => {
           }
           return null
         })
-        .filter(Boolean)
+        .filter((item): item is NonNullable<typeof item> => item !== null)
         .sort((a, b) => b.priority - a.priority) // 按优先级降序排列
 
       groups.push({
@@ -1548,13 +1533,11 @@ const loadProviderInfoMap = async () => {
 }
 
 // 刷新大模型配置数据
-const refreshLLMConfigs = () => {
-  buildLLMConfigGroups()
-}
+
 
 // 获取厂家标签类型
 const getProviderTagType = (provider: string) => {
-  const typeMap: Record<string, string> = {
+  const typeMap: Record<string, StatusTagType> = {
     'openai': 'primary',
     'google': 'success',
     'anthropic': 'warning',
@@ -1581,14 +1564,14 @@ const getCapabilityLevelText = (level: number) => {
 
 // 🆕 获取能力等级标签类型
 const getCapabilityLevelType = (level: number) => {
-  const typeMap: Record<number, string> = {
+  const typeMap: Record<number, StatusTagType> = {
     1: 'info',
-    2: '',
+    2: 'primary',
     3: 'success',
     4: 'warning',
     5: 'danger'
   }
-  return typeMap[level] || ''
+  return typeMap[level] || 'info'
 }
 
 // 🆕 获取角色文本
@@ -1616,7 +1599,7 @@ const addModelToProvider = (providerRow: any) => {
   currentLLMConfig.value = {
     provider: providerRow.provider,
     model_name: '',
-    display_name: '',
+    model_display_name: '',
     description: '',
     enabled: true,
     max_tokens: 4000,
@@ -1780,16 +1763,7 @@ const handleLLMConfigSuccess = () => {
 }
 
 // 设置默认LLM
-const setDefaultLLM = async (modelName: string) => {
-  try {
-    await configApi.setDefaultLLM(modelName)
-    defaultLLM.value = modelName
-    buildLLMConfigGroups() // 重新构建分组以更新排序
-    ElMessage.success('默认大模型设置成功')
-  } catch (error) {
-    ElMessage.error('设置默认大模型失败')
-  }
-}
+
 
 // 测试LLM配置
 const testLLMConfig = async (config: LLMConfig) => {
@@ -1915,15 +1889,7 @@ const handleDataSourceGroupingSuccess = () => {
   buildDataSourceGroups()
 }
 
-const setDefaultDataSource = async (name: string) => {
-  try {
-    await configApi.setDefaultDataSource(name)
-    defaultDataSource.value = name
-    ElMessage.success('默认数据源设置成功')
-  } catch (error) {
-    ElMessage.error('设置默认数据源失败')
-  }
-}
+
 
 const testDataSource = async (config: DataSourceConfig) => {
   try {

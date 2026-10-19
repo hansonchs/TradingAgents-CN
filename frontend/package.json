@@ -9,7 +9,9 @@
     "preview": "vite preview",
     "lint": "eslint . --ext .vue,.js,.jsx,.cjs,.mjs,.ts,.tsx,.cts,.mts --fix --ignore-path .gitignore",
     "format": "prettier --write src/",
-    "type-check": "vue-tsc --noEmit"
+    "type-check": "vue-tsc --noEmit",
+    "test:transport": "node scripts/test-api-transport.mjs",
+    "test:ui-contracts": "node scripts/test-api-transport.mjs && node scripts/test-safe-html.mjs"
   },
   "dependencies": {
     "@element-plus/icons-vue": "^2.3.1",
@@ -17,6 +19,7 @@
     "@vueuse/core": "^10.7.0",
     "axios": "^1.6.2",
     "dayjs": "^1.11.10",
+    "dompurify": "3.4.17",
     "echarts": "^5.4.3",
     "element-plus": "^2.4.4",
     "lodash-es": "^4.17.21",
@@ -43,6 +46,7 @@
     "@vue/tsconfig": "^0.5.1",
     "eslint": "^8.56.0",
     "eslint-plugin-vue": "^9.19.2",
+    "jsdom": "26.1.0",
     "prettier": "^3.1.1",
     "sass": "^1.69.5",
     "sass-embedded": "^1.69.5",

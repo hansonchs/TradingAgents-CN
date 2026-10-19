@@ -1720,6 +1720,10 @@ class SimpleAnalysisService:
                     'reasoning': '暂无分析推理'
                 }
 
+            # Preserve provider failure in persisted decision metadata.
+            from tradingagents.utils.research_decision import with_research_status
+            formatted_decision = with_research_status(formatted_decision, state)
+
             # 🔥 按照web目录的方式生成summary和recommendation
             summary = ""
             recommendation = ""
@@ -1783,13 +1787,14 @@ class SimpleAnalysisService:
             # 构建结果
             result = {
                 "analysis_id": str(uuid.uuid4()),
+                "user_id": str(user_id),
                 "stock_code": request.stock_code,
                 "stock_symbol": request.stock_code,  # 添加stock_symbol字段以保持兼容性
                 "analysis_date": analysis_date,
                 "summary": summary,
                 "recommendation": recommendation,
                 "confidence_score": formatted_decision.get("confidence", 0.0) if isinstance(formatted_decision, dict) else 0.0,
-                "risk_level": "中等",  # 可以根据risk_score计算
+                "risk_level": "中等" if formatted_decision["analysis_status"] == "completed" else "未知",
                 "key_points": [],  # 可以从reasoning中提取关键点
                 "detailed_analysis": decision,
                 "execution_time": execution_time,
@@ -2583,6 +2588,7 @@ class SimpleAnalysisService:
 
             # 构建文档（与web目录的MongoDBReportManager保持一致）
             document = {
+                "user_id": result.get("user_id"),
                 "analysis_id": analysis_id,
                 "stock_symbol": stock_symbol,
                 "stock_name": stock_name,  # 🔥 添加股票名称字段
@@ -2849,8 +2855,9 @@ class SimpleAnalysisService:
                 if isinstance(decision, dict):
                     decision_content += f"## 投资建议\n\n"
                     decision_content += f"**行动**: {decision.get('action', 'N/A')}\n\n"
-                    decision_content += f"**置信度**: {decision.get('confidence', 0):.1%}\n\n"
-                    decision_content += f"**风险评分**: {decision.get('risk_score', 0):.1%}\n\n"
+                    from tradingagents.utils.research_decision import format_research_percent
+                    decision_content += f"**置信度**: {format_research_percent(decision.get('confidence'))}\n\n"
+                    decision_content += f"**风险评分**: {format_research_percent(decision.get('risk_score'))}\n\n"
                     decision_content += f"**目标价位**: {decision.get('target_price', 'N/A')}\n\n"
                     decision_content += f"## 分析推理\n\n{decision.get('reasoning', '暂无分析推理')}\n\n"
                 else:
@@ -2871,6 +2878,7 @@ class SimpleAnalysisService:
                 'research_depth': result.get('research_depth', 1),
                 'analysts': result.get('analysts', []),
                 'status': 'completed',
+                'risk_analysis_status': decision.get('analysis_status', 'unknown') if isinstance(decision, dict) else 'unknown',
                 'reports_count': len(saved_files),
                 'report_types': list(saved_files.keys())
             }

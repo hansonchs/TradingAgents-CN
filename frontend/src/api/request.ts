@@ -1,6 +1,6 @@
 import axios from 'axios'
 import type { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios'
-import { ElMessage, ElMessageBox } from 'element-plus'
+import { ElMessage } from 'element-plus'
 import { useAuthStore } from '@/stores/auth'
 import { useAppStore } from '@/stores/app'
 import router from '@/router'
@@ -104,12 +104,6 @@ const createAxiosInstance = (): AxiosInstance => {
         if (token) {
           config.headers = config.headers || {}
           config.headers.Authorization = `Bearer ${token}`
-          console.log('🔐 已设置Authorization头:', {
-            hasToken: !!token,
-            tokenLength: token?.length || 0,
-            tokenPrefix: token?.substring(0, 20) || 'None',
-            authHeader: config.headers.Authorization?.substring(0, 30) || 'None'
-          })
         } else {
           console.log('⚠️ 未设置Authorization头:', {
             skipAuth: config.skipAuth,
@@ -157,16 +151,13 @@ const createAxiosInstance = (): AxiosInstance => {
       console.log(`🚀 API请求: ${config.method?.toUpperCase()} ${config.url}`, {
         baseURL: config.baseURL,
         fullURL: `${config.baseURL}${config.url}`,
-        params: config.params,
-        data: config.data,
-        headers: config.headers,
         timeout: config.timeout
       })
 
       return config
     },
     (error) => {
-      console.error('❌ 请求拦截器错误:', error)
+      console.error('❌ 请求拦截器错误')
       return Promise.reject(error)
     }
   )
@@ -183,7 +174,7 @@ const createAxiosInstance = (): AxiosInstance => {
         appStore.setLoading(false)
       }
 
-      console.log(`✅ API响应: ${response.status} ${response.config.url}`, response.data)
+      console.log(`✅ API响应: ${response.status} ${response.config.url}`)
 
       // 检查业务状态码
       const data = response.data as ApiResponse
@@ -222,13 +213,8 @@ const createAxiosInstance = (): AxiosInstance => {
       }
 
       console.error(`❌ API错误: ${error.response?.status} ${error.config?.url}`, {
-        error: error,
-        message: error.message,
         code: error.code,
-        response: error.response,
-        request: error.request,
-        config: error.config,
-        stack: error.stack
+        status: error.response?.status
       })
 
       // 处理HTTP状态码错误
@@ -263,7 +249,7 @@ const createAxiosInstance = (): AxiosInstance => {
                   console.log('❌ Token刷新失败')
                 }
               } catch (refreshError) {
-                console.error('❌ Token刷新异常:', refreshError)
+                console.error('❌ Token刷新异常')
               }
             }
 
@@ -464,15 +450,15 @@ export const testApiConnection = async (): Promise<boolean> => {
     console.log('🔍 [API_TEST] 基础URL:', import.meta.env.VITE_API_BASE_URL || '使用代理')
     console.log('🔍 [API_TEST] 代理目标:', 'http://localhost:8000 (根据vite.config.ts)')
 
-    const response = await request.get('/api/health', {
+    await request.get('/api/health', {
       timeout: 5000,
       skipErrorHandler: true
-    })
+    } as RequestConfig)
 
-    console.log('🔍 [API_TEST] 健康检查成功:', response.data)
+    console.log('🔍 [API_TEST] 健康检查成功')
     return true
   } catch (error: any) {
-    console.error('🔍 [API_TEST] 健康检查失败:', error)
+    console.error('🔍 [API_TEST] 健康检查失败')
 
     if (error.code === 'ECONNABORTED') {
       console.error('🔍 [API_TEST] 连接超时 - 后端服务可能未启动')
@@ -490,6 +476,27 @@ export const testApiConnection = async (): Promise<boolean> => {
 
 // 请求方法封装
 export class ApiClient {
+  // Explicit raw-body endpoints. Other endpoints keep their ApiResponse envelope.
+  static rawGet<T>(url: string, params?: unknown, config?: RequestConfig): Promise<T> {
+    return request.get<T, T>(url, { params, ...config })
+  }
+
+  static rawPost<T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> {
+    return request.post<T, T>(url, data, config)
+  }
+
+  static rawPut<T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> {
+    return request.put<T, T>(url, data, config)
+  }
+
+  static rawDelete<T>(url: string, config?: RequestConfig): Promise<T> {
+    return request.delete<T, T>(url, config)
+  }
+
+  static rawPatch<T>(url: string, data?: unknown, config?: RequestConfig): Promise<T> {
+    return request.patch<T, T>(url, data, config)
+  }
+
   // GET请求
   static async get<T = any>(
     url: string,
@@ -571,7 +578,7 @@ export class ApiClient {
     config?: RequestConfig
   ): Promise<void> {
     // 对于 blob 响应，响应拦截器返回的就是 blob 数据
-    const blobData = await request.get(url, {
+    const blobData = await request.get<Blob, Blob>(url, {
       responseType: 'blob',
       ...config
     })

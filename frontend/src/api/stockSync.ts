@@ -24,6 +24,7 @@ export interface BatchStockSyncRequest {
 }
 
 export interface SyncResult {
+  data_source_used?: string
   success: boolean
   records?: number
   message?: string

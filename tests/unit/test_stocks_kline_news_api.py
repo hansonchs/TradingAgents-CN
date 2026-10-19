@@ -5,7 +5,7 @@ from unittest.mock import patch
 
 # Build a minimal app that mounts only the stocks router to avoid triggering app.main lifespan
 from app.routers import stocks as stocks_router
-from app.routers.auth import get_current_user
+from app.routers.auth_db import get_current_user
 
 
 def create_test_app():
@@ -56,21 +56,55 @@ def test_kline_invalid_period_returns_400(client):
     assert j["detail"].startswith("不支持的period")
 
 
-def test_news_ok_with_announcements_and_source(client):
-    items = [
-        {"title": "公告样例", "source": "tushare", "time": "2024-09-02", "url": "http://x", "type": "announcement"},
-        {"title": "新闻样例", "source": "tushare", "time": "2024-09-02 10:00:00", "url": "http://y", "type": "news"},
-    ]
-    with patch("app.services.data_sources.manager.DataSourceManager.get_news_with_fallback", return_value=(items, "tushare")):
-        resp = client.get("/api/stocks/000001/news", params={"days": 2, "limit": 2, "include_announcements": True})
-        assert resp.status_code == 200
-        body = resp.json()
-        assert body.get("success") is True
-        data = body.get("data")
-        assert data["code"] == "000001"
-        assert data["days"] == 2
-        assert data["limit"] == 2
-        assert data["include_announcements"] is True
-        assert data["source"] == "tushare"
-        assert isinstance(data["items"], list) and len(data["items"]) == 2
+def news_services(monkeypatch, rows, unavailable=False):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    import app.services.news_data_service as news
+    import app.worker.akshare_sync_service as worker
+    query = AsyncMock(return_value=rows)
+    service = SimpleNamespace(query_news=query)
+    monkeypatch.setattr(news, 'get_news_data_service', AsyncMock(return_value=service))
+    sync = AsyncMock()
+    if unavailable:
+        sync.side_effect = RuntimeError('offline news service')
+    monkeypatch.setattr(worker, 'get_akshare_sync_service', sync)
+    return query, sync
 
+
+def test_news_preserves_source_type_and_requested_publication_window(client, monkeypatch):
+    rows = [dict(title='Announcement', source='fixture', publish_time='2024-09-02', url='https://example.test/a', type='announcement'),
+            dict(title='News', source='fixture', publish_time='2024-09-02', url='https://example.test/b')]
+    query, sync = news_services(monkeypatch, rows)
+    response = client.get('/api/stocks/000001/news', params=dict(days=2, limit=2, include_announcements=True))
+    assert response.status_code == 200
+    data = response.json()['data']
+    assert data['status'] == 'ready' and data['source'] == 'database'
+    assert data['items'][0]['type'] == 'announcement'
+    assert data['items'][0]['source'] == 'fixture'
+    params = query.call_args.args[0]
+    assert params.end_time - params.start_time == __import__('datetime').timedelta(days=2)
+    sync.assert_not_awaited()
+    response = client.get('/api/stocks/000001/news', params=dict(include_announcements=False))
+    assert [item['type'] for item in response.json()['data']['items']] == ['news']
+
+
+def test_failed_news_and_unsupported_market_are_not_healthy_empty_results(client, monkeypatch):
+    news_services(monkeypatch, [], unavailable=True)
+    data = client.get('/api/stocks/000001/news').json()['data']
+    assert data['status'] == 'unavailable' and data['source'] is None
+    hk = client.get('/api/stocks/00700.HK/news').json()['data']
+    assert hk['status'] == 'unsupported'
+
+
+@pytest.mark.parametrize('stats', [None, {}, {'errors':['provider unavailable']},
+    {'success_count':1,'error_count':1}, {'success_count':0}, {'success_count':1,'error_count':0,'errors':[]}])
+def test_nonthrowing_failed_or_ambiguous_empty_sync_stays_unavailable(client, monkeypatch, stats):
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock
+    import app.worker.akshare_sync_service as worker
+    news_services(monkeypatch, [])
+    sync=AsyncMock(return_value=stats)
+    monkeypatch.setattr(worker, 'get_akshare_sync_service', AsyncMock(return_value=SimpleNamespace(sync_news_data=sync)))
+    data=client.get('/api/stocks/000001/news').json()['data']
+    assert data['status']=='unavailable' and data['source'] is None
+    sync.assert_awaited_once()

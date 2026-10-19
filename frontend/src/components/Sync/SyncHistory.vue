@@ -116,6 +116,7 @@
 </template>
 
 <script setup lang="ts">
+import type { StatusTagType } from '@/types/ui'
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Clock, Refresh, SuccessFilled, CircleCloseFilled, Warning } from '@element-plus/icons-vue'
@@ -200,7 +201,7 @@ const refreshHistory = async () => {
 
 // 获取状态类型
 const getStatusType = (status: string) => {
-  const typeMap: Record<string, string> = {
+  const typeMap: Record<string, StatusTagType> = {
     idle: 'info',
     running: 'warning',
     success: 'success',
@@ -226,7 +227,7 @@ const getStatusText = (status: string) => {
 
 // 获取时间线类型
 const getTimelineType = (status: string) => {
-  const typeMap: Record<string, string> = {
+  const typeMap: Record<string, StatusTagType> = {
     success: 'success',
     success_with_errors: 'warning',
     failed: 'danger',

@@ -12,7 +12,7 @@
 ### 安装依赖
 
 ```bash
-npm install
+corepack yarn install --frozen-lockfile
 ```
 
 ### 启动开发服务器
@@ -26,6 +26,7 @@ npm run dev
 ### 构建生产版本
 
 ```bash
+npm run test:ui-contracts
 npm run build
 ```
 
@@ -310,3 +311,11 @@ const exampleStore = useExampleStore()
 ---
 
 **TradingAgents-CN Frontend v1.0.0-preview** - 现代化的股票分析平台前端
+
+## 研究边界与验证
+
+此应用用于研究和本地模拟账户，不连接实际券商 paper account。报告只有明确完成分析才可生成本地模拟交易；缺少有效报价时禁止使用默认价格代替。Token 统计页目前是明确标注的示例数据，不代表实际费用。
+
+报告及 task API 按拥有者隔离；缺少 owner 的历史数据仅管理员可见。所有当前 Markdown/HTML 显示经过 DOMPurify，新闻链接仅允许 HTTP(S)。新闻同步失败或无法确认的空结果显示不可用。TaskCenter 使用已认证的 HTTP 轮询获取进度。
+
+`test:ui-contracts` 使用实际 sanitizer、fake transport 和 JSDOM 验证下载响应、未知风险、币种余额与主动 HTML 清理；`build` 保留完整 `vue-tsc` 检查。它们不代替真实登录、浏览器交互或研究 provider 验收。后端相关离线测试说明见 [研究修复验证](../docs/RESEARCH_REPAIR_VALIDATION.md)。

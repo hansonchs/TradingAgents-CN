@@ -171,19 +171,12 @@ tradingagents/dataflows/
 
 ---
 
-### 6. unified_dataframe.py (5.77 KB)
-**职责**: 统一DataFrame格式，支持多数据源降级
+### 6. 历史 DataFrame 接口已移除
 
-**主要功能**:
-- `get_china_daily_df_unified()` - 统一的A股日线数据获取
-- 多数据源降级：Tushare → AKShare → Baostock
-- DataFrame格式标准化
-
-**使用场景**: `app/services/screening_service.py`
-
-**与 data_source_manager 的区别**:
-- `unified_dataframe`: 返回 DataFrame，适合数据分析
-- `data_source_manager`: 返回格式化字符串，适合Agent使用
+`unified_dataframe.py` 已不存在。当前 Web 数据接口使用
+`app/services/data_sources/manager.py` 的 `get_kline_with_fallback()`，返回
+`(OHLCV items, source)`；需要 pandas 时由研究调用方明确构建 DataFrame。
+不要为了旧测试再维护另一套提供器选择逻辑。
 
 ---
 
@@ -247,8 +240,8 @@ tradingagents/dataflows/
    - 备选: `interface.get_china_stock_fundamentals_tushare()`
 
 3. **数据分析场景**:
-   - 推荐使用: `unified_dataframe.get_china_daily_df_unified()`
-   - 返回 DataFrame，适合 pandas 操作
+   - 推荐使用: `app.services.data_sources.manager.DataSourceManager.get_kline_with_fallback()`
+   - 返回带来源的 OHLCV records；调用方可显式转成 DataFrame
 
 4. **简单查询场景**:
    - 推荐使用: `stock_api.get_stock_info()`
@@ -264,7 +257,7 @@ tradingagents/dataflows/
 2. **功能重叠**:
    - 不同文件服务不同场景，重叠是合理的
    - `data_source_manager`: Agent场景（返回字符串）
-   - `unified_dataframe`: 数据分析场景（返回DataFrame）
+   - `app.services.data_sources.manager`: Web OHLCV records 与来源
    - `stock_data_service`: MongoDB → TDX 降级场景
 
 3. **配置管理**:

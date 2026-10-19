@@ -162,3 +162,6 @@ export interface InvitationCode {
   max_uses: number
   current_uses: number
 }
+
+// PATCH /auth/user merges preference keys into existing settings.
+export type UserInfoUpdate = Omit<Partial<User>, 'preferences'> & { preferences?: Partial<UserPreferences> }

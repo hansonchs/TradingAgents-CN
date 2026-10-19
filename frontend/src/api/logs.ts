@@ -56,21 +56,21 @@ export const LogsApi = {
    * 获取日志文件列表
    */
   listLogFiles(): Promise<LogFileInfo[]> {
-    return ApiClient.get('/api/system/system-logs/files')
+    return ApiClient.rawGet('/api/system/system-logs/files')
   },
 
   /**
    * 读取日志文件内容
    */
   readLogFile(request: LogReadRequest): Promise<LogContentResponse> {
-    return ApiClient.post('/api/system/system-logs/read', request)
+    return ApiClient.rawPost('/api/system/system-logs/read', request)
   },
 
   /**
    * 导出日志文件
    */
   async exportLogs(request: LogExportRequest): Promise<Blob> {
-    const response = await ApiClient.post('/api/system/system-logs/export', request, {
+    const response = await ApiClient.rawPost('/api/system/system-logs/export', request, {
       responseType: 'blob'
     })
     return response as unknown as Blob
@@ -80,14 +80,14 @@ export const LogsApi = {
    * 获取日志统计信息
    */
   getStatistics(days: number = 7): Promise<LogStatistics> {
-    return ApiClient.get('/api/system/system-logs/statistics', { params: { days } })
+    return ApiClient.rawGet('/api/system/system-logs/statistics', { params: { days } })
   },
 
   /**
    * 删除日志文件
    */
   deleteLogFile(filename: string): Promise<{ success: boolean; message: string }> {
-    return ApiClient.delete(`/api/system/system-logs/files/${filename}`)
+    return ApiClient.rawDelete(`/api/system/system-logs/files/${filename}`)
   }
 }
 

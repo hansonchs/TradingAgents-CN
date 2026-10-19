@@ -184,6 +184,7 @@
 </template>
 
 <script setup lang="ts">
+import type { StatusTagType } from '@/types/ui'
 import { ref, computed, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
@@ -205,7 +206,7 @@ const loading = ref(false)
 const searchKeyword = ref('')
 const marketFilter = ref('')
 const dateRange = ref<[string, string] | null>(null)
-const selectedReports = ref([])
+const selectedReports = ref<import('@/types/reports').AnalysisReport[]>([])
 const currentPage = ref(1)
 const pageSize = ref(20)
 const totalReports = ref(0)
@@ -398,7 +399,7 @@ const deleteReport = async (report: any) => {
       throw new Error(result.message || '删除失败')
     }
   } catch (error) {
-    if (error.message !== 'cancel') {
+    if (error !== 'cancel' && (!(error instanceof Error) || error.message !== 'cancel')) {
       console.error('删除报告失败:', error)
       ElMessage.error('删除报告失败')
     }
@@ -414,7 +415,7 @@ const refreshReports = () => {
 }
 
 const getTypeColor = (type: string) => {
-  const colorMap: Record<string, string> = {
+  const colorMap: Record<string, StatusTagType> = {
     single: 'primary',
     batch: 'success',
     portfolio: 'warning'
@@ -432,7 +433,7 @@ const getTypeText = (type: string) => {
 }
 
 const getStatusType = (status: string) => {
-  const statusMap: Record<string, string> = {
+  const statusMap: Record<string, StatusTagType> = {
     completed: 'success',
     processing: 'warning',
     failed: 'danger'

@@ -202,6 +202,7 @@
 </template>
 
 <script setup lang="ts">
+import type { StatusTagType } from '@/types/ui'
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -233,7 +234,7 @@ const cacheStats = ref({
 })
 
 // 缓存详情数据
-const cacheDetails = ref([])
+const cacheDetails = ref<cacheApi.CacheDetailItem[]>([])
 
 // 清理天数标记
 const cleanupMarks = {
@@ -268,8 +269,8 @@ const getProgressColor = (percentage: number): string => {
   return '#f56c6c'
 }
 
-const getCacheTypeTag = (type: string): string => {
-  const typeMap = {
+const getCacheTypeTag = (type: string): StatusTagType => {
+  const typeMap: Record<string, StatusTagType> = {
     'stock': 'primary',
     'news': 'success',
     'analysis': 'warning'

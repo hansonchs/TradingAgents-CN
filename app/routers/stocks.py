@@ -622,7 +622,7 @@ async def get_kline(
 
 
 @router.get("/{code}/news", response_model=dict)
-async def get_news(code: str, days: int = 30, limit: int = 50, include_announcements: bool = True, current_user: dict = Depends(get_current_user)):
+async def get_news(code: str, days: int = Query(30, ge=1, le=365), limit: int = Query(50, ge=1, le=200), include_announcements: bool = True, current_user: dict = Depends(get_current_user)):
     """获取新闻与公告（支持A股、港股、美股）"""
     from app.services.foreign_stock_service import ForeignStockService
     from app.services.news_data_service import get_news_data_service, NewsQueryParams
@@ -642,6 +642,8 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
             "days": days,
             "limit": limit,
             "source": "none",
+            "status": "unsupported",
+            "include_announcements": include_announcements,
             "items": []
         }
         return ok(data)
@@ -657,21 +659,19 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
             from app.worker.akshare_sync_service import get_akshare_sync_service
 
             service = await get_news_data_service()
-            sync_service = await get_akshare_sync_service()
 
-            # 计算时间范围
-            hours_back = days * 24
-
-            # 🔥 不设置 start_time 限制，直接查询最新的 N 条新闻
-            # 因为数据库中的新闻可能不是最近几天的，而是历史数据
+            # Honour the requested publication window; older cached news is not current news.
+            end_time = datetime.utcnow()
             params = NewsQueryParams(
                 symbol=normalized_code,
+                start_time=end_time - timedelta(days=days),
+                end_time=end_time,
                 limit=limit,
                 sort_by="publish_time",
                 sort_order=-1
             )
 
-            logger.info(f"🔍 查询参数: symbol={params.symbol}, limit={params.limit} (不限制时间范围)")
+            logger.info(f"🔍 查询参数: symbol={params.symbol}, limit={params.limit} (按发表时间范围)")
 
             # 1. 先从数据库查询
             logger.info(f"📊 步骤1: 从数据库查询新闻...")
@@ -679,6 +679,7 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
             logger.info(f"📊 数据库查询结果: 返回 {len(news_list)} 条新闻")
 
             data_source = "database"
+            sync_failed = False
 
             # 2. 如果数据库没有数据，调用同步服务
             if not news_list:
@@ -686,26 +687,37 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
                 try:
                     # 🔥 调用同步服务，传入单个股票代码列表
                     logger.info(f"📡 步骤2: 调用同步服务...")
-                    await sync_service.sync_news_data(
+                    sync_service = await get_akshare_sync_service()
+                    sync_stats = await sync_service.sync_news_data(
                         symbols=[normalized_code],
                         max_news_per_stock=limit,
                         force_update=False,
                         favorites_only=False
                     )
 
+                    if (not isinstance(sync_stats, dict) or sync_stats.get("errors")
+                            or sync_stats.get("error_count", 0) or not sync_stats.get("success_count")):
+                        raise RuntimeError("News synchronization did not confirm success")
+
                     # 重新查询
                     logger.info(f"🔄 步骤3: 重新从数据库查询...")
                     news_list = await service.query_news(params)
                     logger.info(f"📊 重新查询结果: 返回 {len(news_list)} 条新闻")
                     data_source = "realtime"
+                    if not news_list:
+                        sync_failed = True
 
                 except Exception as e:
+                    sync_failed = True
                     logger.error(f"❌ 同步服务异常: {e}", exc_info=True)
 
             # 转换为旧格式（兼容前端）
             logger.info(f"🔄 步骤4: 转换数据格式...")
             items = []
             for news in news_list:
+                item_type = 'announcement' if news.get('type') == 'announcement' or news.get('category') == 'announcement' else 'news'
+                if not include_announcements and item_type == 'announcement':
+                    continue
                 # 🔥 将 datetime 对象转换为 ISO 字符串
                 publish_time = news.get("publish_time", "")
                 if isinstance(publish_time, datetime):
@@ -716,7 +728,7 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
                     "source": news.get("source", ""),
                     "time": publish_time,
                     "url": news.get("url", ""),
-                    "type": "news",
+                    "type": item_type,
                     "content": news.get("content", ""),
                     "summary": news.get("summary", "")
                 })
@@ -728,7 +740,8 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
                 "days": days,
                 "limit": limit,
                 "include_announcements": include_announcements,
-                "source": data_source,
+                "source": data_source if not sync_failed else None,
+                "status": "unavailable" if sync_failed else "ready" if items else "empty",
                 "items": items
             }
 
@@ -744,6 +757,7 @@ async def get_news(code: str, days: int = 30, limit: int = 50, include_announcem
                 "limit": limit,
                 "include_announcements": include_announcements,
                 "source": None,
+                "status": "unavailable",
                 "items": []
             }
             return ok(data)

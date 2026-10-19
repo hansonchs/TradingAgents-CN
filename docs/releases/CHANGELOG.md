@@ -2,6 +2,13 @@
 
 本文档记录了TradingAgents-CN项目的所有重要更改。
 
+## [Workspace review] - 2026-10-19
+
+- Correct risk-manager fundamentals memory input; preserve unavailable research status in logs, decisions and export metadata. Unknown risk renders as unknown in reports/UI.
+- Respect the disabled startup-sync setting.
+- Distinguish raw config/log response bodies from API envelopes and remove sensitive payload/header logging from the edited interceptor.
+- Add offline provider-failure, export/display and transport regressions. Full frontend typecheck remains blocked by pre-existing errors; research sandbox only.
+
 ## [v1.0.0-preview] - 2025-10-XX - 多应用架构预览版 (FastAPI + Vite + Streamlit)
 
 ### 🎉 重大更新

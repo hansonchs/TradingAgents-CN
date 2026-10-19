@@ -1,6 +1,6 @@
 from typing import Annotated, Sequence
 from datetime import date, timedelta, datetime
-from typing_extensions import TypedDict, Optional
+from typing_extensions import TypedDict, Optional, NotRequired
 from langchain_openai import ChatOpenAI
 from tradingagents.agents import *
 from langgraph.prebuilt import ToolNode
@@ -27,6 +27,7 @@ class InvestDebateState(TypedDict):
 
 # Risk management team state
 class RiskDebateState(TypedDict):
+    analysis_status: NotRequired[str]
     risky_history: Annotated[
         str, "Risky Agent's Conversation history"
     ]  # Conversation history

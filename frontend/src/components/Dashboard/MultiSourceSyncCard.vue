@@ -119,13 +119,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage } from 'element-plus'
-import { 
-  Connection, 
-  ArrowRight, 
-  Refresh, 
-  SuccessFilled, 
-  CircleCloseFilled 
-} from '@element-plus/icons-vue'
+import { Connection, ArrowRight, Refresh } from '@element-plus/icons-vue'
 import { 
   getSyncStatus, 
   getDataSourcesStatus, 

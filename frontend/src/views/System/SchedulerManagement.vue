@@ -602,7 +602,6 @@ import {
   markExecutionFailed,
   deleteExecution,
   type Job,
-  type JobHistory,
   type JobExecution,
   type SchedulerStats
 } from '@/api/scheduler'
@@ -635,7 +634,7 @@ const currentJob = ref<Job | null>(null)
 // 执行历史
 const historyDialogVisible = ref(false)
 const historyLoading = ref(false)
-const historyList = ref<JobHistory[]>([])
+const historyList = ref<JobExecution[]>([])
 const historyTotal = ref(0)
 const historyPage = ref(1)
 const historyPageSize = ref(20)
@@ -863,7 +862,7 @@ const handleHistoryPageChange = (page: number) => {
   loadHistory()
 }
 
-const handleHistoryTabChange = (tabName: string) => {
+const handleHistoryTabChange = (tabName: string | number) => {
   if (tabName === 'execution') {
     executionPage.value = 1
     loadExecutions()
@@ -994,15 +993,7 @@ const formatTrigger = (trigger: string) => {
   return trigger
 }
 
-const formatAction = (action: string) => {
-  const actionMap: Record<string, string> = {
-    pause: '暂停',
-    resume: '恢复',
-    trigger: '手动触发',
-    execute: '执行'
-  }
-  return actionMap[action] || action
-}
+
 
 const handleSearch = () => {
   // 搜索和筛选会自动通过 computed 属性生效
